@@ -73,6 +73,27 @@ class Farmer extends Model
      */
     public function farmPlots(): HasMany
     {
-        return $this->hasMany(FarmPlot::class);
+        return $this->hasMany(FarmPlot::class, 'farmer_id');
+    }
+
+    /**
+     * Local Scope: Filter farmers by common search terms.
+     */
+    public function scopeSearch($query, string $term)
+    {
+        // Wrap the search term in SQL wildcards for a partial match
+        $term = "%{$term}%";
+
+        // We wrap these OR conditions in a closure to ensure they are grouped in SQL
+        // like: WHERE (...) AND deleted_at IS NULL
+        $query->where(function ($q) use ($term) {
+            $q->where('rsbsa_no', 'like', $term)
+              ->orWhere('transaction_code', 'like', $term)
+              ->orWhere('first_name', 'like', $term)
+              ->orWhere('surname', 'like', $term)
+              ->orWhere('middle_name', 'like', $term)
+              ->orWhere('permanent_brgy', 'like', $term) // Helpful for geographic filtering
+              ->orWhere('permanent_city', 'like', $term);
+        });
     }
 }

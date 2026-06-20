@@ -41,8 +41,8 @@ return new class extends Migration
 
             // ── Birth Details ─────────────────────────────────────────────
             $table->date('birthdate');
-            $table->string('place_of_birth_city');
-            $table->string('place_of_birth_province');
+            $table->string('place_of_birth_city')->nullable();
+            $table->string('place_of_birth_province')->nullable();
 
             // ── Contact ───────────────────────────────────────────────────
             $table->string('mobile_number');
@@ -84,11 +84,11 @@ return new class extends Migration
             ]);
 
             // ── Religion ──────────────────────────────────────────────────
-            $table->string('religion');
+            $table->string('religion')->nullable();
 
             // ── Government ID ─────────────────────────────────────────────
-            $table->string('id_type');
-            $table->string('id_number');
+            $table->string('id_type')->nullable();
+            $table->string('id_number')->nullable();
 
             // ── Vulnerability & Membership ────────────────────────────────
             $table->boolean('is_icc_ip')->default(false);
@@ -109,6 +109,7 @@ return new class extends Migration
                 'Agri-Youth',
             ]);
 
+            $table->string('qr_code_hash')->unique();
             $table->timestamps();
             $table->softDeletes();
         });

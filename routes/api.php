@@ -1,17 +1,24 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\FarmerController;
+use App\Http\Controllers\ProgramController;
 use Illuminate\Support\Facades\Route;
 
 // Public Routes
 Route::post('/login', [AuthController::class, 'login']);
 
-// Protected Routes (Requires standard Authorization Bearer Token)
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+    
+    // Core Registry Endpoints
+    Route::get('/farmers', [FarmerController::class, 'index']);
+    Route::post('/farmers', [FarmerController::class, 'store']);
 
-    // Future routes will go here:
-    // Route::get('/farmers', [FarmerController::class, 'index']);
-    // Route::post('/sync/distributions', [SyncController::class, 'push']);
+    // Subsidy & Inventory Control Systems
+    Route::get('/programs', [ProgramController::class, 'index']);
+    Route::post('/programs', [ProgramController::class, 'store']);
+    Route::get('/programs/{id}', [ProgramController::class, 'show']);
 });
