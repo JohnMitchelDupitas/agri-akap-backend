@@ -14,9 +14,9 @@ class DatabaseSeeder extends Seeder
         // Register all your individual seeders here
         $this->call([
             UserSeeder::class,
-            // Later we will add:
-            // ProgramSeeder::class,
-            // FarmerSeeder::class,
+            ProgramSeeder::class,
+            FarmerSeeder::class,
+            FarmPlotSeeder::class,
         ]);
     }
 }

@@ -12,9 +12,10 @@ class Distribution extends Model
     use HasFactory, HasUuid; // No soft deletes here to keep unique constraint logic simple
 
     protected $fillable = [
-        'farmer_id',
         'program_id',
+        'farmer_id',
         'distributed_by',
+        'quantity_claimed',
         'status',
         'device_id',
         'claimed_at',

@@ -12,10 +12,12 @@ return new class extends Migration
             $table->uuid('id')->primary();
 
             // Foreign Keys
-            $table->foreignUuid('farmer_id')->constrained('farmers')->cascadeOnDelete();
             $table->foreignUuid('program_id')->constrained('programs')->cascadeOnDelete();
+            $table->foreignUuid('farmer_id')->constrained('farmers')->cascadeOnDelete();
             $table->foreignUuid('distributed_by')->constrained('users')->comment('Technician who scanned the QR');
 
+            $table->integer('quantity_claimed');
+            
             // Sync & Audit details
             $table->enum('status', ['claimed', 'pending_sync'])->default('claimed');
             $table->string('device_id')->nullable()->comment('Tracks which mobile device logged this offline');
