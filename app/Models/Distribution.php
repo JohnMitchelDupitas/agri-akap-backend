@@ -25,16 +25,19 @@ class Distribution extends Model
         'claimed_at' => 'datetime',
     ];
 
-    public function farmer(): BelongsTo
-    {
-        return $this->belongsTo(Farmer::class);
-    }
-
+   // Connects to the Program
     public function program(): BelongsTo
     {
-        return $this->belongsTo(Program::class);
+        return $this->belongsTo(Program::class, 'program_id');
     }
 
+    // Connects to the Farmer
+    public function farmer(): BelongsTo
+    {
+        return $this->belongsTo(Farmer::class, 'farmer_id');
+    }
+
+    // Connects to the Technician (User) who dispensed it
     public function technician(): BelongsTo
     {
         return $this->belongsTo(User::class, 'distributed_by');

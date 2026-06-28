@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FarmerController;
 use App\Http\Controllers\ProgramController;
 use App\Http\Controllers\DistributionController;
+use App\Http\Controllers\DashboardController;
 use Illuminate\Support\Facades\Route;
 
 // Public Routes
@@ -25,4 +26,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Mobile Verification & Claiming Engine
     Route::post('/distributions/claim', [DistributionController::class, 'processClaim']);
+
+    // Analytics & Accomplishment Reports
+    Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
 });
