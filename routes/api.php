@@ -5,6 +5,7 @@ use App\Http\Controllers\FarmerController;
 use App\Http\Controllers\ProgramController;
 use App\Http\Controllers\DistributionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\BroadcastController;
 use Illuminate\Support\Facades\Route;
 
 // Public Routes
@@ -29,4 +30,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Analytics & Accomplishment Reports
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
+
+    Route::get('/broadcasts', [BroadcastController::class, 'index']);
+    Route::post('/broadcasts/send', [BroadcastController::class, 'sendBulkSms']);
 });
