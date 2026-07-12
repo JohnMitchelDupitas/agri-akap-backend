@@ -117,15 +117,16 @@ class ReportExportController extends Controller
     private function damage(array $f): array
     {
         $headers = [
-            'Farmer', 'Barangay', 'Calamity', 'Date of Calamity', 'Commodity',
-            'Area (ha)', 'Damage %', 'Est. Value Lost (PHP)', 'Status',
+            'Farmer', 'Barangay', 'Calamity Type', 'Calamity', 'Date of Calamity',
+            'Commodity', 'Area (ha)', 'Area Destroyed (ha)', 'Crop Stage',
+            'Damage %', 'Est. Value Lost (PHP)', 'Status', 'PCIC Filed',
         ];
 
         $rows = DamageAssessment::with([
             'farmer:id,first_name,surname,permanent_brgy',
             'farmPlot:id,commodity,size_ha,location_brgy',
         ])
-            ->where('status', 'Approved')
+            ->whereIn('status', ['Approved', 'Claimed'])
             ->when($f['barangay'], function ($q) use ($f) {
                 $q->where(function ($sub) use ($f) {
                     $sub->whereHas('farmPlot', fn ($fp) => $fp->where('location_brgy', $f['barangay']))
@@ -140,13 +141,17 @@ class ReportExportController extends Controller
             ->map(fn ($a) => [
                 trim((optional($a->farmer)->first_name ?? '') . ' ' . (optional($a->farmer)->surname ?? '')),
                 optional($a->farmPlot)->location_brgy ?? optional($a->farmer)->permanent_brgy,
+                $a->calamity_type,
                 $a->calamity_name,
                 optional($a->date_of_calamity)->format('Y-m-d'),
                 optional($a->farmPlot)->commodity,
                 optional($a->farmPlot)->size_ha,
+                $a->area_destroyed_ha,
+                $a->crop_stage,
                 $a->damage_percentage,
                 $a->estimated_value_lost,
                 $a->status,
+                $a->is_pcic_notice_filed ? 'Yes' : 'No',
             ]);
 
         return [$headers, $rows];

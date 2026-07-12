@@ -3,14 +3,22 @@
 namespace App\Http\Controllers;
 
 use App\Models\CropMonitoring;
+use App\Models\Farmer;
 use App\Models\FarmPlot;
 use App\Models\PestOutbreak;
+use App\Models\SmsBroadcast;
+use App\Services\SmsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class IntelligenceController extends Controller
 {
+    public function __construct(private SmsService $sms)
+    {
+    }
+
     /**
      * Log a new crop cycle and check for Monoculture risks.
      */
@@ -121,6 +129,14 @@ class IntelligenceController extends Controller
             ->orderBy('date_spotted', 'desc')
             ->get();
 
+        // Attach a community-advisory preview to High/Critical threat vectors so
+        // the admin can review the target group before broadcasting.
+        $activePests->each(function (PestOutbreak $pest) {
+            if (in_array($pest->severity, ['High', 'Critical'], true) && $pest->farmPlot) {
+                $pest->advisory = $this->buildAdvisory($pest, $pest->farmPlot);
+            }
+        });
+
         $pestSummary = [
             'total' => PestOutbreak::count(),
             'active' => PestOutbreak::where('status', 'Active')->count(),
@@ -142,7 +158,8 @@ class IntelligenceController extends Controller
     }
 
     /**
-     * Log a new pest sighting from the field. Requires geolocation.
+     * Log a new pest sighting from the field. Resolves a prescriptive
+     * countermeasure and flags High/Critical reports as active threat vectors.
      */
     public function reportPest(Request $request): JsonResponse
     {
@@ -156,16 +173,87 @@ class IntelligenceController extends Controller
             'notes' => 'nullable|string|max:500',
         ]);
 
+        $plot = FarmPlot::with('farmer:id,permanent_brgy')->findOrFail($validated['farm_plot_id']);
+
+        // Bind the report to the parcel's stored coordinates when the device
+        // GPS fix is unavailable.
+        if (empty($validated['latitude']) && !empty($plot->latitude)) {
+            $validated['latitude'] = $plot->latitude;
+        }
+        if (empty($validated['longitude']) && !empty($plot->longitude)) {
+            $validated['longitude'] = $plot->longitude;
+        }
+
         $validated['technician_id'] = $request->user()->id;
         $validated['status'] = 'Active';
+        $validated['recommended_intervention'] = $this->resolveIntervention(
+            $validated['pest_name'],
+            $validated['severity']
+        );
 
         $pest = PestOutbreak::create($validated);
+
+        $highPriority = in_array($validated['severity'], ['High', 'Critical'], true);
 
         return response()->json([
             'status' => 'success',
             'message' => 'Pest outbreak reported. MAO office has been notified.',
             'data' => $pest->load('farmPlot:id,location_brgy,commodity'),
+            'recommended_intervention' => $validated['recommended_intervention'],
+            'high_priority' => $highPriority,
+            'advisory' => $highPriority ? $this->buildAdvisory($pest, $plot) : null,
         ], 201);
+    }
+
+    /**
+     * Resolve the MAO-approved countermeasure for a pest signature, escalating
+     * the directive for High/Critical severity. See config/pest_guidelines.php.
+     */
+    protected function resolveIntervention(string $pestName, string $severity): string
+    {
+        $interventions = config('pest_guidelines.interventions', []);
+        $normalized = Str::lower(trim($pestName));
+
+        $match = collect($interventions)
+            ->first(fn ($text, $label) => Str::lower($label) === $normalized);
+
+        $recommendation = $match ?? config('pest_guidelines.default');
+
+        if (in_array($severity, ['High', 'Critical'], true)) {
+            $recommendation .= ' ' . config('pest_guidelines.escalation');
+        }
+
+        return $recommendation;
+    }
+
+    /**
+     * Build the community-advisory preview payload (target group + message)
+     * for a confirmed outbreak so the admin can review before broadcasting.
+     */
+    protected function buildAdvisory(PestOutbreak $pest, FarmPlot $plot): array
+    {
+        $brgy = $plot->location_brgy;
+        $commodity = $plot->commodity;
+
+        $recipientCount = Farmer::whereNotNull('mobile_number')
+            ->where('permanent_brgy', $brgy)
+            ->whereHas('farmPlots', fn ($q) => $q->where('commodity', $commodity))
+            ->count();
+
+        return [
+            'target_barangay' => $brgy,
+            'target_commodity' => $commodity,
+            'recipient_count' => $recipientCount,
+            'message' => $this->advisoryMessage($pest->pest_name, $brgy, $commodity),
+        ];
+    }
+
+    /**
+     * Compose the <=160 character advisory SMS body.
+     */
+    protected function advisoryMessage(string $pestName, string $brgy, string $commodity): string
+    {
+        return "MAO Alert: {$pestName} detected in Brgy {$brgy}. Inspect your {$commodity} fields now and apply countermeasures. Visit the MAO office for details.";
     }
 
     /**
@@ -186,5 +274,59 @@ class IntelligenceController extends Controller
             'message' => "Pest status updated to {$validated['status']}.",
             'data' => $pest->fresh(),
         ]);
+    }
+
+    /**
+     * Broadcast a community advisory (IPROG /send_bulk) to all farmers of the
+     * affected commodity in the outbreak's barangay. Admin-triggered.
+     */
+    public function broadcastAdvisory(string $id): JsonResponse
+    {
+        $pest = PestOutbreak::with('farmPlot:id,location_brgy,commodity')->findOrFail($id);
+
+        if (!$pest->farmPlot) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'The affected farm parcel could not be resolved for this outbreak.',
+            ], 422);
+        }
+
+        $brgy = $pest->farmPlot->location_brgy;
+        $commodity = $pest->farmPlot->commodity;
+
+        $farmers = Farmer::whereNotNull('mobile_number')
+            ->where('permanent_brgy', $brgy)
+            ->whereHas('farmPlots', fn ($q) => $q->where('commodity', $commodity))
+            ->get();
+
+        $phoneNumbers = $farmers->pluck('mobile_number')->filter()->values()->all();
+        $recipientCount = count($phoneNumbers);
+
+        if ($recipientCount === 0) {
+            return response()->json([
+                'status' => 'error',
+                'message' => "No {$commodity} farmers with contact numbers found in Brgy {$brgy}.",
+            ], 400);
+        }
+
+        $message = $this->advisoryMessage($pest->pest_name, $brgy, $commodity);
+        $result = $this->sms->sendBulk($phoneNumbers, $message);
+        $status = $result['success']
+            ? 'Success (' . $result['provider'] . ')'
+            : 'Failed (' . $result['provider'] . ')';
+
+        $broadcast = SmsBroadcast::create([
+            'target_barangay' => $brgy,
+            'target_commodity' => $commodity,
+            'message_body' => $message,
+            'recipient_count' => $recipientCount,
+            'status' => $status,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => "Community advisory dispatched to {$recipientCount} {$commodity} farmer(s) in Brgy {$brgy}.",
+            'data' => $broadcast,
+        ], 200);
     }
 }

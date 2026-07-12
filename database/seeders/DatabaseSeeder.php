@@ -26,6 +26,7 @@ class DatabaseSeeder extends Seeder
             FarmerSeeder::class,
             FarmPlotSeeder::class,
             DamageAssessmentSeeder::class,
+            PcicEnrollmentSeeder::class,
             PestOutbreakSeeder::class,
             CropMonitoringSeeder::class,
         ]);

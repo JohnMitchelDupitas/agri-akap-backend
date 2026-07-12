@@ -25,6 +25,9 @@ class StoreProgramRequest extends FormRequest
             'max_hectare_cap' => 'required|numeric|min:0.01',
             'start_date' => 'required|date|after_or_equal:today',
             'end_date' => 'required|date|after:start_date',
+            'reorder_level' => 'nullable|integer|min:0',
+            'target_barangays' => 'nullable|array',
+            'target_barangays.*' => 'string|max:255',
         ];
     }
 }

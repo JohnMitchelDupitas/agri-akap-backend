@@ -18,6 +18,7 @@ class PestOutbreak extends Model
         'severity',
         'date_spotted',
         'status',
+        'recommended_intervention',
         'latitude',
         'longitude',
         'notes',

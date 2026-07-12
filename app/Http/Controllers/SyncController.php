@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class SyncController extends Controller
 {
@@ -75,6 +76,9 @@ class SyncController extends Controller
             'program_id' => $item['program_id'],
             'device_id' => $item['device_id'] ?? $deviceId,
             'claimed_at' => $item['claimed_at'] ?? null,
+            'geo_tag_lat' => $item['geo_tag_lat'] ?? null,
+            'geo_tag_long' => $item['geo_tag_long'] ?? null,
+            'photo_proof_base64' => $item['photo_proof_base64'] ?? null,
         ];
 
         $result = $this->distributions->executeClaim($payload, $technicianId);
@@ -88,7 +92,10 @@ class SyncController extends Controller
 
         $validator = Validator::make($item, [
             'farm_plot_id' => 'required|uuid|exists:farm_plots,id',
-            'calamity_name' => 'required|string|max:255',
+            'calamity_type' => ['required', Rule::in(['Typhoon', 'Flood', 'Drought', 'Pest Outbreak', 'Hail', 'Other'])],
+            'calamity_name' => 'nullable|string|max:255',
+            'crop_stage' => ['nullable', Rule::in(['Seedling', 'Vegetative', 'Reproductive', 'Maturity', 'Harvested'])],
+            'area_destroyed_ha' => 'nullable|numeric|min:0',
             'date_of_calamity' => 'required|date',
             'damage_percentage' => 'required|numeric|min:0|max:100',
             'photo_base64' => 'required|string',
@@ -116,7 +123,10 @@ class SyncController extends Controller
                 'farm_plot_id' => $item['farm_plot_id'],
                 'farmer_id' => $farmerId,
                 'technician_id' => $technicianId,
-                'calamity_name' => $item['calamity_name'],
+                'calamity_type' => $item['calamity_type'],
+                'calamity_name' => $item['calamity_name'] ?? $item['calamity_type'],
+                'crop_stage' => $item['crop_stage'] ?? null,
+                'area_destroyed_ha' => $item['area_destroyed_ha'] ?? null,
                 'date_of_calamity' => $item['date_of_calamity'],
                 'damage_percentage' => $item['damage_percentage'],
                 'estimated_value_lost' => $item['estimated_value_lost'] ?? null,
@@ -125,6 +135,7 @@ class SyncController extends Controller
                 'device_id' => $item['device_id'] ?? $deviceId,
                 'photo_evidence_path' => $path,
                 'status' => 'Pending',
+                'is_pcic_notice_filed' => false,
             ]);
 
             return $this->itemResult($clientId ?? $assessment->id, 'synced', 'Assessment filed.');

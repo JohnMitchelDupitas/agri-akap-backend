@@ -17,6 +17,10 @@ class Distribution extends Model
         'farmer_id',
         'distributed_by',
         'quantity_claimed',
+        'item_released',
+        'geo_tag_lat',
+        'geo_tag_long',
+        'photo_proof_path',
         'status',
         'device_id',
         'claimed_at',
@@ -24,7 +28,29 @@ class Distribution extends Model
 
     protected $casts = [
         'claimed_at' => 'datetime',
+        'geo_tag_lat' => 'decimal:8',
+        'geo_tag_long' => 'decimal:8',
     ];
+
+    /**
+     * Model-level safeguard against double-dipping: a farmer may claim a given
+     * program only once. Backstops the DB unique index and the controller check
+     * without disturbing offline client_id idempotency (same-id re-inserts are
+     * caught earlier in executeClaim()).
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Distribution $distribution) {
+            $duplicate = static::where('farmer_id', $distribution->farmer_id)
+                ->where('program_id', $distribution->program_id)
+                ->when($distribution->id, fn ($q) => $q->where('id', '!=', $distribution->id))
+                ->exists();
+
+            if ($duplicate) {
+                throw new \RuntimeException('This farmer has already claimed their subsidy for this program.');
+            }
+        });
+    }
 
    // Connects to the Program
     public function program(): BelongsTo

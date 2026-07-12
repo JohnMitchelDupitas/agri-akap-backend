@@ -17,6 +17,9 @@ class DamageAssessment extends Model
         'farmer_id',
         'technician_id',
         'calamity_name',
+        'calamity_type',
+        'crop_stage',
+        'area_destroyed_ha',
         'date_of_calamity',
         'damage_percentage',
         'estimated_value_lost',
@@ -24,6 +27,9 @@ class DamageAssessment extends Model
         'latitude',
         'longitude',
         'status',
+        'is_pcic_notice_filed',
+        'pcic_notice_filed_at',
+        'pcic_notice_filed_by',
         'verified_by',
         'verified_at',
         'approved_by',
@@ -36,8 +42,11 @@ class DamageAssessment extends Model
         'date_of_calamity' => 'date',
         'damage_percentage' => 'decimal:2',
         'estimated_value_lost' => 'decimal:2',
+        'area_destroyed_ha' => 'decimal:4',
         'latitude' => 'decimal:8',
         'longitude' => 'decimal:8',
+        'is_pcic_notice_filed' => 'boolean',
+        'pcic_notice_filed_at' => 'datetime',
         'verified_at' => 'datetime',
         'approved_at' => 'datetime',
     ];
@@ -79,5 +88,10 @@ class DamageAssessment extends Model
     public function approver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function noticeFiler(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'pcic_notice_filed_by');
     }
 }

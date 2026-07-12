@@ -7,6 +7,7 @@ use App\Models\Program;
 use App\Http\Requests\StoreProgramRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ProgramController extends Controller
 {
@@ -87,6 +88,57 @@ class ProgramController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Program has been deactivated. Existing distributions are preserved.',
+            'data' => $program->fresh(),
+        ]);
+    }
+
+    /**
+     * Log an incoming regional delivery (admin only). Adds the delivered units
+     * to both the lifetime total and the currently available stock.
+     */
+    public function restock(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'quantity_added' => 'required|integer|min:1',
+        ]);
+
+        $program = DB::transaction(function () use ($id, $validated) {
+            $program = Program::where('id', $id)->lockForUpdate()->firstOrFail();
+            $program->total_quantity += $validated['quantity_added'];
+            $program->remaining_quantity += $validated['quantity_added'];
+            $program->save();
+
+            return $program;
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => "Delivery logged. {$validated['quantity_added']} {$program->unit_of_measurement} added to stock.",
+            'data' => $program->fresh(),
+        ]);
+    }
+
+    /**
+     * Update stock-management configuration (admin only): minimum reorder
+     * threshold and the barangays targeted by the active distribution cycle.
+     */
+    public function updateConfig(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'reorder_level' => 'nullable|integer|min:0',
+            'target_barangays' => 'nullable|array',
+            'target_barangays.*' => 'string|max:255',
+        ]);
+
+        $program = Program::findOrFail($id);
+        $program->update([
+            'reorder_level' => $validated['reorder_level'] ?? null,
+            'target_barangays' => $validated['target_barangays'] ?? null,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Stock settings updated.',
             'data' => $program->fresh(),
         ]);
     }
