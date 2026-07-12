@@ -2,35 +2,89 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FarmerController;
+use App\Http\Controllers\FarmPlotController;
 use App\Http\Controllers\ProgramController;
 use App\Http\Controllers\DistributionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\BroadcastController;
+use App\Http\Controllers\IntelligenceController;
+use App\Http\Controllers\DamageAssessmentController;
+use App\Http\Controllers\ReportExportController;
+use App\Http\Controllers\SyncController;
 use Illuminate\Support\Facades\Route;
 
-// Public Routes
+// ── Public ────────────────────────────────────────────────────────────────────
 Route::post('/login', [AuthController::class, 'login']);
 
-
+// ── Authenticated ─────────────────────────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
+
+    // Auth
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
 
-    // Core Registry Endpoints
+    // Farmer Registry
     Route::get('/farmers', [FarmerController::class, 'index']);
     Route::post('/farmers', [FarmerController::class, 'store']);
+    Route::get('/farmers/lookup', [FarmerController::class, 'lookup']);
+    Route::get('/farmers/barangays', [FarmerController::class, 'barangays']);
+    Route::get('/farmers/commodities', [FarmerController::class, 'commodities']);
+    Route::get('/farmers/{id}', [FarmerController::class, 'show']);
+    Route::post('/farmers/{id}/photo', [FarmerController::class, 'uploadPhoto'])
+        ->middleware('role:admin');
 
-    // Subsidy & Inventory Control Systems
+    // Farm Plots
+    Route::get('/farm-plots', [FarmPlotController::class, 'index']);
+    Route::get('/farm-plots/{id}', [FarmPlotController::class, 'show']);
+
+    // Subsidy Programs
     Route::get('/programs', [ProgramController::class, 'index']);
-    Route::post('/programs', [ProgramController::class, 'store']);
     Route::get('/programs/{id}', [ProgramController::class, 'show']);
+    Route::post('/programs', [ProgramController::class, 'store'])
+        ->middleware('role:admin');
+    Route::patch('/programs/{id}/deactivate', [ProgramController::class, 'deactivate'])
+        ->middleware('role:admin');
 
-    // Mobile Verification & Claiming Engine
+    // Distribution / Claiming
     Route::post('/distributions/claim', [DistributionController::class, 'processClaim']);
 
-    // Analytics & Accomplishment Reports
-    Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
+    // Offline Bulk Sync
+    Route::post('/sync/bulk', [SyncController::class, 'bulkUpload']);
 
+    // Analytics & Reports
+    Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
+    Route::get('/dashboard/map-data', [DashboardController::class, 'mapData'])
+        ->middleware('role:admin,technician');
+    Route::get('/dashboard/forecast', [DashboardController::class, 'forecast'])
+        ->middleware('role:admin');
+    Route::get('/dashboard/risk-index', [DashboardController::class, 'riskIndex'])
+        ->middleware('role:admin');
+    Route::get('/dashboard/report', [DashboardController::class, 'accomplishmentReport'])
+        ->middleware('role:admin');
+    Route::get('/reports/export/{type}', [ReportExportController::class, 'export'])
+        ->middleware('role:admin');
+
+    // SMS Broadcast
     Route::get('/broadcasts', [BroadcastController::class, 'index']);
-    Route::post('/broadcasts/send', [BroadcastController::class, 'sendBulkSms']);
+    Route::post('/broadcasts/send', [BroadcastController::class, 'sendBulkSms'])
+        ->middleware('role:admin');
+
+    // Agricultural Intelligence
+    Route::post('/intelligence/crop-log', [IntelligenceController::class, 'logCrop']);
+    Route::get('/intelligence/dashboard', [IntelligenceController::class, 'getDashboardData']);
+    Route::post('/intelligence/pest-report', [IntelligenceController::class, 'reportPest']);
+    Route::get('/intelligence/crop-history', [IntelligenceController::class, 'cropHistory']);
+    Route::get('/intelligence/monoculture-alerts', [IntelligenceController::class, 'monocultureAlerts'])
+        ->middleware('role:admin');
+    Route::patch('/intelligence/pest-outbreaks/{id}/status', [IntelligenceController::class, 'updatePestStatus'])
+        ->middleware('role:admin,technician');
+
+    // Disaster Damage Assessment Workflow
+    Route::get('/damage-assessments', [DamageAssessmentController::class, 'index']);
+    Route::post('/damage-assessments', [DamageAssessmentController::class, 'store']);
+    Route::get('/damage-assessments/{id}', [DamageAssessmentController::class, 'show']);
+    Route::patch('/damage-assessments/{id}/verify', [DamageAssessmentController::class, 'verify'])
+        ->middleware('role:barangay_official,admin');
+    Route::patch('/damage-assessments/{id}/decide', [DamageAssessmentController::class, 'decide'])
+        ->middleware('role:admin');
 });

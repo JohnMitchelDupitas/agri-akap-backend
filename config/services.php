@@ -35,4 +35,26 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | SMS Gateway
+    |--------------------------------------------------------------------------
+    | AGRI-AKAP can dispatch bulk/transactional SMS through either IPROG or
+    | Semaphore. Switch providers with SMS_PROVIDER (iprog|semaphore).
+    */
+    'sms' => [
+        'provider' => env('SMS_PROVIDER', 'iprog'),
+
+        'iprog' => [
+            'token' => env('IPROG_API_TOKEN'),
+            'base_url' => env('IPROG_BASE_URL', 'https://sms.iprogtech.com'),
+            'sender' => env('IPROG_SENDER_NAME', 'MAO-ECHAGUE'),
+        ],
+
+        'semaphore' => [
+            'key' => env('SEMAPHORE_API_KEY'),
+            'sender' => env('SEMAPHORE_SENDER_NAME', 'MAO-ECHAGUE'),
+        ],
+    ],
+
 ];

@@ -35,7 +35,18 @@ class UserSeeder extends Seeder
             ]
         );
 
-        // 3. Create a Deactivated User to test UI login restrictions
+        // 3. Create a Barangay Official who pre-assesses disaster damage
+        User::updateOrCreate(
+            ['email' => 'brgy@mao.com'],
+            [
+                'name' => 'Barangay Official',
+                'password' => Hash::make('password123'),
+                'role' => 'barangay_official',
+                'is_active' => true,
+            ]
+        );
+
+        // 4. Create a Deactivated User to test UI login restrictions
         User::updateOrCreate(
             ['email' => 'suspended@mao.com'],
             [

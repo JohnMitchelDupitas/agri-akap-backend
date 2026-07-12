@@ -43,9 +43,7 @@ class Farmer extends Model
         // Vulnerability & Affiliations
         'is_icc_ip', 'icc_ip_name', 'is_pwd', 'is_4ps_beneficiary',
         'association_1', 'association_2', 'association_3', 'livelihood_type',
-
-        // Farm Location (Ensure these are in your migration!)
-        'farm_latitude', 'farm_longitude', 'barangay'
+        'livelihood_detail',
     ];
 
     protected $casts = [
@@ -56,8 +54,6 @@ class Farmer extends Model
         'is_pwd' => 'boolean',
         'is_4ps_beneficiary' => 'boolean',
         'birthdate' => 'date',
-        'farm_latitude' => 'decimal:8',
-        'farm_longitude' => 'decimal:8',
     ];
 
     /**

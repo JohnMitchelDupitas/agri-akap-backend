@@ -14,9 +14,9 @@ class FarmPlot extends Model
 
     protected $fillable = [
         'farmer_id', 'location_brgy', 'location_city', 'location_province',
-        'latitude', 'longitude', 'total_parcel_area_ha', 'is_ancestral_domain',
+        'latitude', 'longitude', 'georef_id', 'total_parcel_area_ha', 'is_ancestral_domain',
         'is_agrarian_reform_beneficiary', 'ownership_type', 'land_owner_first_name',
-        'land_owner_surname', 'land_owner_ext_name', 'proof_of_ownership_document',
+        'land_owner_surname', 'land_owner_ext_name', 'land_owner_rsbsa_no', 'proof_of_ownership_document',
         'commodity', 'size_ha', 'no_of_heads_or_trees', 'farm_type', 'is_organic',
         'cropping_schedule', 'rotational_tiller_full_name', 'remarks'
     ];

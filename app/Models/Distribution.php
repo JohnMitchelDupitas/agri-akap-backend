@@ -12,6 +12,7 @@ class Distribution extends Model
     use HasFactory, HasUuid; // No soft deletes here to keep unique constraint logic simple
 
     protected $fillable = [
+        'id', // allow client-generated UUID for offline-first idempotency
         'program_id',
         'farmer_id',
         'distributed_by',

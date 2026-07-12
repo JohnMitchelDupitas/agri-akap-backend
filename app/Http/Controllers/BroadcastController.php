@@ -4,23 +4,32 @@ namespace App\Http\Controllers;
 
 use App\Models\Farmer;
 use App\Models\SmsBroadcast;
+use App\Services\SmsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 
 class BroadcastController extends Controller
 {
+    public function __construct(private SmsService $sms)
+    {
+    }
+
+    /**
+     * Get recent SMS campaigns for the dashboard.
+     */
     public function index(): JsonResponse
     {
         $broadcasts = SmsBroadcast::orderBy('created_at', 'desc')->take(10)->get();
         return response()->json(['status' => 'success', 'data' => $broadcasts], 200);
     }
 
+    /**
+     * Send a bulk SMS to filtered farmers via Semaphore API.
+     */
     public function sendBulkSms(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'message_body' => 'required|string|max:160',
+            'message_body' => 'required|string|max:160', // Standard SMS limit
             'target_barangay' => 'nullable|string',
             'target_commodity' => 'nullable|string',
         ]);
@@ -29,19 +38,20 @@ class BroadcastController extends Controller
         $query = Farmer::whereNotNull('mobile_number');
 
         if (!empty($validated['target_barangay']) && $validated['target_barangay'] !== 'All') {
-            $query->where('barangay', $validated['target_barangay']);
+            $query->where('permanent_brgy', $validated['target_barangay']);
         }
 
+        // Use whereHas to filter by their farm plots' commodity
         if (!empty($validated['target_commodity']) && $validated['target_commodity'] !== 'All') {
             $query->whereHas('farmPlots', function ($q) use ($validated) {
-                $q->where('primary_crop', $validated['target_commodity']);
+                $q->where('commodity', $validated['target_commodity']);
             });
         }
 
-        // 2. Extract phone numbers
+        // 2. Extract and format phone numbers
         $farmers = $query->get();
-        $phoneNumbers = $farmers->pluck('mobile_number')->filter()->implode(',');
-        $recipientCount = $farmers->count();
+        $phoneNumbers = $farmers->pluck('mobile_number')->filter()->values()->all();
+        $recipientCount = count($phoneNumbers);
 
         if ($recipientCount === 0) {
             return response()->json([
@@ -50,24 +60,11 @@ class BroadcastController extends Controller
             ], 400);
         }
 
-        // 3. Send Payload to IPROG SMS API (Bulk Endpoint)
-        try {
-            // 👈 FIXED: Appended /send_bulk to the API URL
-            $response = Http::post('https://www.iprogsms.com/api/v1/sms_messages/send_bulk', [
-                'api_token'    => env('IPROG_API_TOKEN'),
-                'phone_number' => $phoneNumbers,
-                'message'      => $validated['message_body']
-            ]);
-
-            $status = $response->successful() ? 'Success' : 'Failed';
-
-            if ($response->failed()) {
-                Log::error('IPROG API Error: ' . $response->body());
-            }
-        } catch (\Exception $e) {
-            Log::error('IPROG API Network Error: ' . $e->getMessage());
-            $status = 'Failed (Network Error)';
-        }
+        // 3. Dispatch through the configured SMS gateway (IPROG / Semaphore).
+        $result = $this->sms->sendBulk($phoneNumbers, $validated['message_body']);
+        $status = $result['success']
+            ? 'Success (' . $result['provider'] . ')'
+            : 'Failed (' . $result['provider'] . ')';
 
         // 4. Log the Campaign in our database
         $broadcast = SmsBroadcast::create([
@@ -80,7 +77,7 @@ class BroadcastController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => "Broadcast processed. Queued to $recipientCount farmers via IPROG.",
+            'message' => "Broadcast processed. Queued to $recipientCount farmers.",
             'data' => $broadcast
         ], 200);
     }
