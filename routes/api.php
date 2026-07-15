@@ -11,6 +11,7 @@ use App\Http\Controllers\IntelligenceController;
 use App\Http\Controllers\DamageAssessmentController;
 use App\Http\Controllers\PcicEnrollmentController;
 use App\Http\Controllers\ReportExportController;
+use App\Http\Controllers\ReportWorkflowController;
 use App\Http\Controllers\SyncController;
 use Illuminate\Support\Facades\Route;
 
@@ -69,6 +70,24 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:admin');
     Route::get('/reports/export/{type}', [ReportExportController::class, 'export'])
         ->middleware('role:admin');
+
+    // Statutory Report Workflows
+    Route::post('/report-workflows/preview', [ReportWorkflowController::class, 'preview'])
+        ->middleware('role:admin');
+    Route::get('/report-workflows', [ReportWorkflowController::class, 'index'])
+        ->middleware('role:admin');
+    Route::post('/report-workflows', [ReportWorkflowController::class, 'store'])
+        ->middleware('role:admin');
+    Route::get('/report-workflows/{id}', [ReportWorkflowController::class, 'show'])
+        ->middleware('role:admin');
+    Route::patch('/report-workflows/{id}/verify', [ReportWorkflowController::class, 'verify'])
+        ->middleware('role:admin');
+    Route::patch('/report-workflows/{id}/finalize', [ReportWorkflowController::class, 'finalize'])
+        ->middleware('role:admin');
+
+    // Technician personal contribution history
+    Route::get('/technician/activity-log', [DashboardController::class, 'activityLog'])
+        ->middleware('role:technician');
 
     // SMS Broadcast
     Route::get('/broadcasts', [BroadcastController::class, 'index']);

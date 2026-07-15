@@ -9,6 +9,8 @@ use App\Models\Farmer;
 use App\Models\FarmPlot;
 use App\Models\PestOutbreak;
 use App\Models\Program;
+use App\Models\ReportWorkflow;
+use App\Services\ReportAggregationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -143,6 +145,8 @@ class DashboardController extends Controller
 
         $activePests = PestOutbreak::where('status', 'Active')->count();
 
+        $pendingReports = ReportWorkflow::where('provincial_status', 'Pending')->count();
+
         $recentTransactions = Distribution::with([
             'farmer:id,first_name,surname,permanent_brgy',
             'program:id,name,unit_of_measurement',
@@ -170,6 +174,7 @@ class DashboardController extends Controller
                     'dispensed_breakdown' => $dispensedTotals,
                     'damage_summary' => $damageSummary,
                     'active_pests' => $activePests,
+                    'pending_reports' => $pendingReports,
                 ],
                 'audit_trail' => $recentTransactions,
             ],
@@ -178,83 +183,131 @@ class DashboardController extends Controller
 
     /**
      * Generate data for the Accomplishment Report (Phase 5 - Executive Reporting).
-     * Returns a pre-aggregated payload suitable for a printable report.
+     * Delegates to ReportAggregationService for filter-aware aggregation.
      */
-    public function accomplishmentReport(): JsonResponse
+    public function accomplishmentReport(ReportAggregationService $aggregation): JsonResponse
     {
-        $programs = Program::withCount('distributions')
-            ->with([
-                'distributions' => fn ($q) => $q->select('id', 'program_id', 'quantity_claimed', 'farmer_id'),
-            ])
+        $payload = $aggregation->aggregate([
+            'report_type' => 'Provincial Accomplishment Report',
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $payload,
+        ]);
+    }
+
+    /**
+     * Personal contribution history for the active reporting period (technician).
+     */
+    public function activityLog(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date|after_or_equal:date_from',
+        ]);
+
+        $dateFrom = $validated['date_from'] ?? now()->startOfMonth()->format('Y-m-d');
+        $dateTo = $validated['date_to'] ?? now()->format('Y-m-d');
+        $techId = $request->user()->id;
+
+        $distributions = Distribution::with([
+            'farmer:id,first_name,surname,permanent_brgy',
+            'program:id,name,unit_of_measurement',
+        ])
+            ->where('distributed_by', $techId)
+            ->where('status', 'claimed')
+            ->whereDate('claimed_at', '>=', $dateFrom)
+            ->whereDate('claimed_at', '<=', $dateTo)
+            ->orderByDesc('claimed_at')
+            ->limit(25)
             ->get()
-            ->map(fn ($p) => [
-                'id' => $p->id,
-                'name' => $p->name,
-                'type' => $p->type,
-                'total_quantity' => $p->total_quantity,
-                'remaining_quantity' => $p->remaining_quantity,
-                'dispensed' => $p->total_quantity - $p->remaining_quantity,
-                'beneficiaries' => $p->distributions_count,
-                'unit' => $p->unit_of_measurement,
-                'is_active' => $p->is_active,
-                'start_date' => optional($p->start_date)->format('M d, Y'),
-                'end_date' => optional($p->end_date)->format('M d, Y'),
-                'funding_source' => $p->funding_source,
+            ->map(fn ($d) => [
+                'type' => 'distribution',
+                'id' => $d->id,
+                'date' => optional($d->claimed_at)->format('M d, Y h:i A'),
+                'label' => optional($d->program)->name,
+                'detail' => trim((optional($d->farmer)->first_name ?? '') . ' ' . (optional($d->farmer)->surname ?? '')),
+                'barangay' => optional($d->farmer)->permanent_brgy,
+                'quantity' => $d->quantity_claimed . ' ' . optional($d->program)->unit_of_measurement,
+                'status' => $d->status,
             ]);
 
-        $damageAssessments = DamageAssessment::with([
+        $assessments = DamageAssessment::with([
             'farmer:id,first_name,surname,permanent_brgy',
-            'farmPlot:id,commodity,size_ha,location_brgy',
+            'farmPlot:id,commodity',
         ])
-            ->where('status', 'Approved')
+            ->where('technician_id', $techId)
+            ->whereDate('created_at', '>=', $dateFrom)
+            ->whereDate('created_at', '<=', $dateTo)
+            ->orderByDesc('created_at')
+            ->limit(25)
             ->get()
             ->map(fn ($a) => [
+                'type' => 'damage_assessment',
                 'id' => $a->id,
-                'farmer_name' => optional($a->farmer)->first_name . ' ' . optional($a->farmer)->surname,
+                'date' => $a->created_at->format('M d, Y h:i A'),
+                'label' => $a->calamity_name,
+                'detail' => trim((optional($a->farmer)->first_name ?? '') . ' ' . (optional($a->farmer)->surname ?? '')),
                 'barangay' => optional($a->farmer)->permanent_brgy,
-                'calamity_name' => $a->calamity_name,
-                'date_of_calamity' => optional($a->date_of_calamity)->format('M d, Y'),
-                'commodity' => optional($a->farmPlot)->commodity,
-                'area_ha' => optional($a->farmPlot)->size_ha,
-                'damage_percentage' => $a->damage_percentage,
-                'estimated_value_lost' => $a->estimated_value_lost,
+                'quantity' => $a->damage_percentage . '% damage',
                 'status' => $a->status,
             ]);
 
-        $pestSummary = PestOutbreak::with([
-            'farmPlot:id,location_brgy,commodity',
-        ])
-            ->orderBy('date_spotted', 'desc')
+        $pests = PestOutbreak::with(['farmPlot:id,location_brgy,commodity'])
+            ->where('technician_id', $techId)
+            ->whereDate('date_spotted', '>=', $dateFrom)
+            ->whereDate('date_spotted', '<=', $dateTo)
+            ->orderByDesc('date_spotted')
+            ->limit(25)
             ->get()
-            ->groupBy(fn ($p) => $p->farmPlot->location_brgy ?? 'Unknown')
-            ->map(fn ($group, $brgy) => [
-                'barangay' => $brgy,
-                'total_outbreaks' => $group->count(),
-                'active' => $group->where('status', 'Active')->count(),
-                'resolved' => $group->where('status', 'Resolved')->count(),
-                'severities' => $group->groupBy('severity')->map->count(),
+            ->map(fn ($p) => [
+                'type' => 'pest_outbreak',
+                'id' => $p->id,
+                'date' => optional($p->date_spotted)->format('M d, Y'),
+                'label' => $p->pest_name,
+                'detail' => optional($p->farmPlot)->commodity,
+                'barangay' => optional($p->farmPlot)->location_brgy,
+                'quantity' => $p->severity,
+                'status' => $p->status,
             ]);
 
-        $farmersByBarangay = Farmer::selectRaw('permanent_brgy, COUNT(*) as count')
-            ->groupBy('permanent_brgy')
-            ->orderBy('permanent_brgy')
-            ->get();
+        $distCount = Distribution::where('distributed_by', $techId)
+            ->where('status', 'claimed')
+            ->whereDate('claimed_at', '>=', $dateFrom)
+            ->whereDate('claimed_at', '<=', $dateTo)
+            ->count();
+
+        $assessCount = DamageAssessment::where('technician_id', $techId)
+            ->whereDate('created_at', '>=', $dateFrom)
+            ->whereDate('created_at', '<=', $dateTo)
+            ->count();
+
+        $pestCount = PestOutbreak::where('technician_id', $techId)
+            ->whereDate('date_spotted', '>=', $dateFrom)
+            ->whereDate('date_spotted', '<=', $dateTo)
+            ->count();
+
+        $recent = $distributions
+            ->concat($assessments)
+            ->concat($pests)
+            ->sortByDesc('date')
+            ->take(30)
+            ->values();
 
         return response()->json([
             'status' => 'success',
             'data' => [
-                'generated_at' => now()->format('F j, Y g:i A'),
-                'programs' => $programs,
-                'damage_assessments' => $damageAssessments,
-                'pest_summary_by_barangay' => $pestSummary,
-                'farmers_by_barangay' => $farmersByBarangay,
-                'totals' => [
-                    'farmers' => Farmer::count(),
-                    'programs' => Program::count(),
-                    'distributions' => Distribution::count(),
-                    'approved_damage_claims' => DamageAssessment::where('status', 'Approved')->count(),
-                    'total_value_lost' => DamageAssessment::where('status', 'Approved')->sum('estimated_value_lost'),
+                'period' => [
+                    'date_from' => $dateFrom,
+                    'date_to' => $dateTo,
                 ],
+                'summary' => [
+                    'distributions' => $distCount,
+                    'damage_assessments' => $assessCount,
+                    'pest_outbreaks' => $pestCount,
+                ],
+                'recent' => $recent,
             ],
         ]);
     }

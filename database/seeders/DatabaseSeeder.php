@@ -29,6 +29,7 @@ class DatabaseSeeder extends Seeder
             PcicEnrollmentSeeder::class,
             PestOutbreakSeeder::class,
             CropMonitoringSeeder::class,
+            ReportWorkflowSeeder::class,
         ]);
     }
 }

@@ -40,6 +40,18 @@ class DamageAssessmentController extends Controller
             $query->where('calamity_type', $request->query('calamity_type'));
         }
 
+        if ($request->filled('barangay')) {
+            $brgy = $request->query('barangay');
+            $query->where(function ($q) use ($brgy) {
+                $q->whereHas('farmer', fn ($f) => $f->where('permanent_brgy', $brgy))
+                    ->orWhereHas('farmPlot', fn ($fp) => $fp->where('location_brgy', $brgy));
+            });
+        }
+
+        if ($request->filled('commodity')) {
+            $query->whereHas('farmPlot', fn ($fp) => $fp->where('commodity', $request->query('commodity')));
+        }
+
         if ($request->query('priority') === 'unfiled') {
             $query->where('status', 'Approved')->where('is_pcic_notice_filed', false);
         }
@@ -62,7 +74,7 @@ class DamageAssessmentController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Damage assessments retrieved.',
-            'data' => $query->paginate(15),
+            'data' => $query->paginate((int) $request->query('per_page', 50)),
         ], 200);
     }
 
