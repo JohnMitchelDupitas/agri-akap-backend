@@ -50,7 +50,8 @@ return [
     |
     */
 
-    'expiration' => null,
+    // Field devices left unattended must re-authenticate after one hour.
+    'expiration' => 60,
 
     /*
     |--------------------------------------------------------------------------
