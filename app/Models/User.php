@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'role', 'is_active'])]
+#[Fillable(['name', 'email', 'password', 'role', 'assigned_barangay', 'is_active'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {

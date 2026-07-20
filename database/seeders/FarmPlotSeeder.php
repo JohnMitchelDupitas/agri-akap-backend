@@ -24,11 +24,11 @@ class FarmPlotSeeder extends Seeder
 
         $rows = [
 
-            // ── Farmer 1: Eduardo Corpuz (Bangag) ─────────────────────────────
+            // ── Farmer 1: Eduardo Corpuz (San Fabian) ─────────────────────────────
             [
                 'id'                            => 'b1000001-0000-0000-0000-000000000001',
                 'farmer_id'                     => 'a1000001-0000-0000-0000-000000000001',
-                'location_brgy'                 => 'Bangag',
+                'location_brgy'                 => 'San Fabian',
                 'location_city'                 => 'Echague',
                 'location_province'             => 'Isabela',
                 'latitude'                      => '16.6842',
@@ -49,7 +49,7 @@ class FarmPlotSeeder extends Seeder
                 'is_organic'                    => false,
                 'cropping_schedule'             => 'Wet Season',
                 'rotational_tiller_full_name'   => null,
-                'remarks'                       => 'Irrigated lowland rice – Bangag canal system',
+                'remarks'                       => 'Irrigated lowland rice – San Fabian canal system',
                 'created_at'                    => now(),
                 'updated_at'                    => now(),
                 'deleted_at'                    => null,
@@ -57,7 +57,7 @@ class FarmPlotSeeder extends Seeder
             [
                 'id'                            => 'b1000002-0000-0000-0000-000000000002',
                 'farmer_id'                     => 'a1000001-0000-0000-0000-000000000001',
-                'location_brgy'                 => 'Bangag',
+                'location_brgy'                 => 'San Fabian',
                 'location_city'                 => 'Echague',
                 'location_province'             => 'Isabela',
                 'latitude'                      => '16.6860',
@@ -83,11 +83,11 @@ class FarmPlotSeeder extends Seeder
                 'deleted_at'                    => null,
             ],
 
-            // ── Farmer 2: Marilyn Tumibay (Bangag) ────────────────────────────
+            // ── Farmer 2: Marilyn Tumibay (San Fabian) ────────────────────────────
             [
                 'id'                            => 'b1000003-0000-0000-0000-000000000003',
                 'farmer_id'                     => 'a1000002-0000-0000-0000-000000000002',
-                'location_brgy'                 => 'Bangag',
+                'location_brgy'                 => 'San Fabian',
                 'location_city'                 => 'Echague',
                 'location_province'             => 'Isabela',
                 'latitude'                      => '16.6831',
@@ -107,7 +107,7 @@ class FarmPlotSeeder extends Seeder
                 'is_organic'                    => false,
                 'cropping_schedule'             => 'Wet Season',
                 'rotational_tiller_full_name'   => null,
-                'remarks'                       => 'CARP beneficiary plot, Bangag',
+                'remarks'                       => 'CARP beneficiary plot, San Fabian',
                 'created_at'                    => now(),
                 'updated_at'                    => now(),
                 'deleted_at'                    => null,
@@ -232,11 +232,11 @@ class FarmPlotSeeder extends Seeder
                 'deleted_at'                    => null,
             ],
 
-            // ── Farmer 6: Felicito Talosig (Lucban) ───────────────────────────
+            // ── Farmer 6: Felicito Talosig (Soyung (Poblacion)) ───────────────────────────
             [
                 'id'                            => 'b1000008-0000-0000-0000-000000000008',
                 'farmer_id'                     => 'a1000006-0000-0000-0000-000000000006',
-                'location_brgy'                 => 'Lucban',
+                'location_brgy'                 => 'Soyung (Poblacion)',
                 'location_city'                 => 'Echague',
                 'location_province'             => 'Isabela',
                 'latitude'                      => '16.7134',
@@ -256,17 +256,17 @@ class FarmPlotSeeder extends Seeder
                 'is_organic'                    => false,
                 'cropping_schedule'             => 'Wet Season',
                 'rotational_tiller_full_name'   => null,
-                'remarks'                       => 'Irrigated rice – Lucban lateral canal',
+                'remarks'                       => 'Irrigated rice – Soyung (Poblacion) lateral canal',
                 'created_at'                    => now(),
                 'updated_at'                    => now(),
                 'deleted_at'                    => null,
             ],
 
-            // ── Farmer 7: Gloria Ferrer (Lucban) ──────────────────────────────
+            // ── Farmer 7: Gloria Ferrer (Soyung (Poblacion)) ──────────────────────────────
             [
                 'id'                            => 'b1000009-0000-0000-0000-000000000009',
                 'farmer_id'                     => 'a1000007-0000-0000-0000-000000000007',
-                'location_brgy'                 => 'Lucban',
+                'location_brgy'                 => 'Soyung (Poblacion)',
                 'location_city'                 => 'Echague',
                 'location_province'             => 'Isabela',
                 'latitude'                      => '16.7118',
@@ -286,7 +286,7 @@ class FarmPlotSeeder extends Seeder
                 'is_organic'                    => true,
                 'cropping_schedule'             => 'Year-Round',
                 'rotational_tiller_full_name'   => null,
-                'remarks'                       => 'Organic vegetable garden – Lucban',
+                'remarks'                       => 'Organic vegetable garden – Soyung (Poblacion)',
                 'created_at'                    => now(),
                 'updated_at'                    => now(),
                 'deleted_at'                    => null,
@@ -350,11 +350,11 @@ class FarmPlotSeeder extends Seeder
                 'deleted_at'                    => null,
             ],
 
-            // ── Farmer 9: Danilo Turingan (Macarang) ──────────────────────────
+            // ── Farmer 9: Danilo Turingan (Magleticia) ──────────────────────────
             [
                 'id'                            => 'b1000012-0000-0000-0000-000000000012',
                 'farmer_id'                     => 'a1000009-0000-0000-0000-000000000009',
-                'location_brgy'                 => 'Macarang',
+                'location_brgy'                 => 'Magleticia',
                 'location_city'                 => 'Echague',
                 'location_province'             => 'Isabela',
                 'latitude'                      => '16.7308',
@@ -375,17 +375,17 @@ class FarmPlotSeeder extends Seeder
                 'is_organic'                    => false,
                 'cropping_schedule'             => 'Wet Season',
                 'rotational_tiller_full_name'   => null,
-                'remarks'                       => 'Large irrigated rice tract – Macarang',
+                'remarks'                       => 'Large irrigated rice tract – Magleticia',
                 'created_at'                    => now(),
                 'updated_at'                    => now(),
                 'deleted_at'                    => null,
             ],
 
-            // ── Farmer 10: Vilma Batoon (Macarang) ────────────────────────────
+            // ── Farmer 10: Vilma Batoon (Magleticia) ────────────────────────────
             [
                 'id'                            => 'b1000013-0000-0000-0000-000000000013',
                 'farmer_id'                     => 'a1000010-0000-0000-0000-000000000010',
-                'location_brgy'                 => 'Macarang',
+                'location_brgy'                 => 'Magleticia',
                 'location_city'                 => 'Echague',
                 'location_province'             => 'Isabela',
                 'latitude'                      => '16.7330',
@@ -411,11 +411,11 @@ class FarmPlotSeeder extends Seeder
                 'deleted_at'                    => null,
             ],
 
-            // ── Farmer 11: Jaime Manantan (Paddad) ────────────────────────────
+            // ── Farmer 11: Jaime Manantan (Pag-asa) ────────────────────────────
             [
                 'id'                            => 'b1000014-0000-0000-0000-000000000014',
                 'farmer_id'                     => 'a1000011-0000-0000-0000-000000000011',
-                'location_brgy'                 => 'Paddad',
+                'location_brgy'                 => 'Pag-asa',
                 'location_city'                 => 'Echague',
                 'location_province'             => 'Isabela',
                 'latitude'                      => '16.7001',
@@ -435,17 +435,17 @@ class FarmPlotSeeder extends Seeder
                 'is_organic'                    => false,
                 'cropping_schedule'             => 'Wet Season',
                 'rotational_tiller_full_name'   => null,
-                'remarks'                       => 'Upland corn – Paddad hillside',
+                'remarks'                       => 'Upland corn – Pag-asa hillside',
                 'created_at'                    => now(),
                 'updated_at'                    => now(),
                 'deleted_at'                    => null,
             ],
 
-            // ── Farmer 12: Nimrod Carpio (San Isidro) ─────────────────────────
+            // ── Farmer 12: Nimrod Carpio (San Antonio Ugad) ─────────────────────────
             [
                 'id'                            => 'b1000015-0000-0000-0000-000000000015',
                 'farmer_id'                     => 'a1000012-0000-0000-0000-000000000012',
-                'location_brgy'                 => 'San Isidro',
+                'location_brgy'                 => 'San Antonio Ugad',
                 'location_city'                 => 'Echague',
                 'location_province'             => 'Isabela',
                 'latitude'                      => '16.7319',
@@ -465,7 +465,7 @@ class FarmPlotSeeder extends Seeder
                 'is_organic'                    => false,
                 'cropping_schedule'             => 'Wet Season',
                 'rotational_tiller_full_name'   => null,
-                'remarks'                       => 'Irrigated lowland – San Isidro',
+                'remarks'                       => 'Irrigated lowland – San Antonio Ugad',
                 'created_at'                    => now(),
                 'updated_at'                    => now(),
                 'deleted_at'                    => null,
@@ -473,7 +473,7 @@ class FarmPlotSeeder extends Seeder
             [
                 'id'                            => 'b1000016-0000-0000-0000-000000000016',
                 'farmer_id'                     => 'a1000012-0000-0000-0000-000000000012',
-                'location_brgy'                 => 'San Isidro',
+                'location_brgy'                 => 'San Antonio Ugad',
                 'location_city'                 => 'Echague',
                 'location_province'             => 'Isabela',
                 'latitude'                      => '16.7335',
@@ -499,11 +499,11 @@ class FarmPlotSeeder extends Seeder
                 'deleted_at'                    => null,
             ],
 
-            // ── Farmer 13: Elvira Aguinaldo (Rang-ayan) ───────────────────────
+            // ── Farmer 13: Elvira Aguinaldo (Rumang-ay) ───────────────────────
             [
                 'id'                            => 'b1000017-0000-0000-0000-000000000017',
                 'farmer_id'                     => 'a1000013-0000-0000-0000-000000000013',
-                'location_brgy'                 => 'Rang-ayan',
+                'location_brgy'                 => 'Rumang-ay',
                 'location_city'                 => 'Echague',
                 'location_province'             => 'Isabela',
                 'latitude'                      => '16.7831',
@@ -523,17 +523,17 @@ class FarmPlotSeeder extends Seeder
                 'is_organic'                    => false,
                 'cropping_schedule'             => 'Wet Season',
                 'rotational_tiller_full_name'   => null,
-                'remarks'                       => 'Remote upland corn – Rang-ayan',
+                'remarks'                       => 'Remote upland corn – Rumang-ay',
                 'created_at'                    => now(),
                 'updated_at'                    => now(),
                 'deleted_at'                    => null,
             ],
 
-            // ── Farmer 14: Roberto Cabanatan (Naguilian) ──────────────────────
+            // ── Farmer 14: Roberto Cabanatan (Narra) ──────────────────────
             [
                 'id'                            => 'b1000018-0000-0000-0000-000000000018',
                 'farmer_id'                     => 'a1000014-0000-0000-0000-000000000014',
-                'location_brgy'                 => 'Naguilian',
+                'location_brgy'                 => 'Narra',
                 'location_city'                 => 'Echague',
                 'location_province'             => 'Isabela',
                 'latitude'                      => '16.7758',
@@ -553,7 +553,7 @@ class FarmPlotSeeder extends Seeder
                 'is_organic'                    => false,
                 'cropping_schedule'             => 'Wet Season',
                 'rotational_tiller_full_name'   => null,
-                'remarks'                       => 'Naguilian upland corn',
+                'remarks'                       => 'Narra upland corn',
                 'created_at'                    => now(),
                 'updated_at'                    => now(),
                 'deleted_at'                    => null,

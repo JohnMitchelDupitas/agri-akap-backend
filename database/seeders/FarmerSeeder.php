@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 /**
- * 15 sample farmers spread across 10 barangays of Echague, Isabela.
+ * 15 sample farmers spread across official Echague barangays (San Fabian, Garit Norte, etc.).
  * Filipino names common in Cagayan Valley / Isabela region.
  * Includes Senior Citizens (60+), PWDs, and 4Ps beneficiaries so that
  * the color-coded ID card feature and analytics dashboards have varied data.
@@ -23,7 +23,7 @@ class FarmerSeeder extends Seeder
 
         DB::table('farmers')->insert([
 
-            // ── Bangag ────────────────────────────────────────────────────────
+            // ── San Fabian ────────────────────────────────────────────────────────
             [
                 'id'                         => 'a1000001-0000-0000-0000-000000000001',
                 'rsbsa_no'                   => 'IV-02-0423-2026-001',
@@ -38,7 +38,7 @@ class FarmerSeeder extends Seeder
                 'sex'                        => 'Male',
                 'permanent_house_no'         => '12',
                 'permanent_street'           => 'Rizal Street',
-                'permanent_brgy'             => 'Bangag',
+                'permanent_brgy'             => 'San Fabian',
                 'permanent_city'             => 'Echague',
                 'permanent_province'         => 'Isabela',
                 'permanent_region'           => 'Region II',
@@ -74,7 +74,7 @@ class FarmerSeeder extends Seeder
                 'icc_ip_name'                => null,
                 'is_pwd'                     => false,
                 'is_4ps_beneficiary'         => false,
-                'association_1'              => 'Bangag Farmers Association',
+                'association_1'              => 'San Fabian Farmers Association',
                 'association_2'              => null,
                 'association_3'              => null,
                 'livelihood_type'            => 'Farmer',
@@ -96,7 +96,7 @@ class FarmerSeeder extends Seeder
                 'sex'                        => 'Female',
                 'permanent_house_no'         => '34',
                 'permanent_street'           => 'Mabini Street',
-                'permanent_brgy'             => 'Bangag',
+                'permanent_brgy'             => 'San Fabian',
                 'permanent_city'             => 'Echague',
                 'permanent_province'         => 'Isabela',
                 'permanent_region'           => 'Region II',
@@ -132,7 +132,7 @@ class FarmerSeeder extends Seeder
                 'icc_ip_name'                => null,
                 'is_pwd'                     => false,
                 'is_4ps_beneficiary'         => true,
-                'association_1'              => 'Bangag Farmers Association',
+                'association_1'              => 'San Fabian Farmers Association',
                 'association_2'              => null,
                 'association_3'              => null,
                 'livelihood_type'            => 'Farmer',
@@ -319,7 +319,7 @@ class FarmerSeeder extends Seeder
                 'updated_at'                 => now(),
             ],
 
-            // ── Lucban ────────────────────────────────────────────────────────
+            // ── Soyung (Poblacion) ────────────────────────────────────────────────────────
             [
                 'id'                         => 'a1000006-0000-0000-0000-000000000006',
                 'rsbsa_no'                   => 'IV-02-0423-2026-006',
@@ -334,7 +334,7 @@ class FarmerSeeder extends Seeder
                 'sex'                        => 'Male',
                 'permanent_house_no'         => '18',
                 'permanent_street'           => 'Aguinaldo Road',
-                'permanent_brgy'             => 'Lucban',
+                'permanent_brgy'             => 'Soyung (Poblacion)',
                 'permanent_city'             => 'Echague',
                 'permanent_province'         => 'Isabela',
                 'permanent_region'           => 'Region II',
@@ -370,7 +370,7 @@ class FarmerSeeder extends Seeder
                 'icc_ip_name'                => null,
                 'is_pwd'                     => false,
                 'is_4ps_beneficiary'         => false,
-                'association_1'              => 'Lucban Irrigators Association',
+                'association_1'              => 'Soyung (Poblacion) Irrigators Association',
                 'association_2'              => 'SAMABAKA',
                 'association_3'              => null,
                 'livelihood_type'            => 'Farmer',
@@ -392,7 +392,7 @@ class FarmerSeeder extends Seeder
                 'sex'                        => 'Female',
                 'permanent_house_no'         => '45',
                 'permanent_street'           => 'Lopez Road',
-                'permanent_brgy'             => 'Lucban',
+                'permanent_brgy'             => 'Soyung (Poblacion)',
                 'permanent_city'             => 'Echague',
                 'permanent_province'         => 'Isabela',
                 'permanent_region'           => 'Region II',
@@ -497,7 +497,7 @@ class FarmerSeeder extends Seeder
                 'updated_at'                 => now(),
             ],
 
-            // ── Macarang ──────────────────────────────────────────────────────
+            // ── Magleticia ──────────────────────────────────────────────────────
             [
                 'id'                         => 'a1000009-0000-0000-0000-000000000009',
                 'rsbsa_no'                   => 'IV-02-0423-2026-009',
@@ -512,7 +512,7 @@ class FarmerSeeder extends Seeder
                 'sex'                        => 'Male',
                 'permanent_house_no'         => '9',
                 'permanent_street'           => 'Farm Road',
-                'permanent_brgy'             => 'Macarang',
+                'permanent_brgy'             => 'Magleticia',
                 'permanent_city'             => 'Echague',
                 'permanent_province'         => 'Isabela',
                 'permanent_region'           => 'Region II',
@@ -548,7 +548,7 @@ class FarmerSeeder extends Seeder
                 'icc_ip_name'                => null,
                 'is_pwd'                     => false,
                 'is_4ps_beneficiary'         => false,
-                'association_1'              => 'Macarang Agricultural Cooperative',
+                'association_1'              => 'Magleticia Agricultural Cooperative',
                 'association_2'              => null,
                 'association_3'              => null,
                 'livelihood_type'            => 'Farmer',
@@ -570,7 +570,7 @@ class FarmerSeeder extends Seeder
                 'sex'                        => 'Female',
                 'permanent_house_no'         => '27',
                 'permanent_street'           => 'Farm Road',
-                'permanent_brgy'             => 'Macarang',
+                'permanent_brgy'             => 'Magleticia',
                 'permanent_city'             => 'Echague',
                 'permanent_province'         => 'Isabela',
                 'permanent_region'           => 'Region II',
@@ -606,7 +606,7 @@ class FarmerSeeder extends Seeder
                 'icc_ip_name'                => null,
                 'is_pwd'                     => false,
                 'is_4ps_beneficiary'         => true,
-                'association_1'              => 'Macarang Agricultural Cooperative',
+                'association_1'              => 'Magleticia Agricultural Cooperative',
                 'association_2'              => null,
                 'association_3'              => null,
                 'livelihood_type'            => 'Farmer',
@@ -615,7 +615,7 @@ class FarmerSeeder extends Seeder
                 'updated_at'                 => now(),
             ],
 
-            // ── Paddad ────────────────────────────────────────────────────────
+            // ── Pag-asa ────────────────────────────────────────────────────────
             [
                 'id'                         => 'a1000011-0000-0000-0000-000000000011',
                 'rsbsa_no'                   => 'IV-02-0423-2026-011',
@@ -630,7 +630,7 @@ class FarmerSeeder extends Seeder
                 'sex'                        => 'Male',
                 'permanent_house_no'         => '14',
                 'permanent_street'           => 'National Highway',
-                'permanent_brgy'             => 'Paddad',
+                'permanent_brgy'             => 'Pag-asa',
                 'permanent_city'             => 'Echague',
                 'permanent_province'         => 'Isabela',
                 'permanent_region'           => 'Region II',
@@ -666,7 +666,7 @@ class FarmerSeeder extends Seeder
                 'icc_ip_name'                => null,
                 'is_pwd'                     => false,
                 'is_4ps_beneficiary'         => false,
-                'association_1'              => 'Paddad Upland Farmers',
+                'association_1'              => 'Pag-asa Upland Farmers',
                 'association_2'              => null,
                 'association_3'              => null,
                 'livelihood_type'            => 'Farmer',
@@ -675,7 +675,7 @@ class FarmerSeeder extends Seeder
                 'updated_at'                 => now(),
             ],
 
-            // ── San Isidro ────────────────────────────────────────────────────
+            // ── San Antonio Ugad ────────────────────────────────────────────────────
             [
                 'id'                         => 'a1000012-0000-0000-0000-000000000012',
                 'rsbsa_no'                   => 'IV-02-0423-2026-012',
@@ -690,7 +690,7 @@ class FarmerSeeder extends Seeder
                 'sex'                        => 'Male',
                 'permanent_house_no'         => '2',
                 'permanent_street'           => 'Sitio Dabbac',
-                'permanent_brgy'             => 'San Isidro',
+                'permanent_brgy'             => 'San Antonio Ugad',
                 'permanent_city'             => 'Echague',
                 'permanent_province'         => 'Isabela',
                 'permanent_region'           => 'Region II',
@@ -726,7 +726,7 @@ class FarmerSeeder extends Seeder
                 'icc_ip_name'                => null,
                 'is_pwd'                     => false,
                 'is_4ps_beneficiary'         => false,
-                'association_1'              => 'San Isidro Farmers Federation',
+                'association_1'              => 'San Antonio Ugad Farmers Federation',
                 'association_2'              => null,
                 'association_3'              => null,
                 'livelihood_type'            => 'Farmer',
@@ -735,7 +735,7 @@ class FarmerSeeder extends Seeder
                 'updated_at'                 => now(),
             ],
 
-            // ── Rang-ayan ─────────────────────────────────────────────────────
+            // ── Rumang-ay ─────────────────────────────────────────────────────
             [
                 'id'                         => 'a1000013-0000-0000-0000-000000000013',
                 'rsbsa_no'                   => 'IV-02-0423-2026-013',
@@ -750,7 +750,7 @@ class FarmerSeeder extends Seeder
                 'sex'                        => 'Female',
                 'permanent_house_no'         => '6',
                 'permanent_street'           => 'Barangay Road',
-                'permanent_brgy'             => 'Rang-ayan',
+                'permanent_brgy'             => 'Rumang-ay',
                 'permanent_city'             => 'Echague',
                 'permanent_province'         => 'Isabela',
                 'permanent_region'           => 'Region II',
@@ -786,7 +786,7 @@ class FarmerSeeder extends Seeder
                 'icc_ip_name'                => null,
                 'is_pwd'                     => false,
                 'is_4ps_beneficiary'         => false,
-                'association_1'              => 'Rang-ayan Upland Farmers',
+                'association_1'              => 'Rumang-ay Upland Farmers',
                 'association_2'              => null,
                 'association_3'              => null,
                 'livelihood_type'            => 'Farmer',
@@ -795,7 +795,7 @@ class FarmerSeeder extends Seeder
                 'updated_at'                 => now(),
             ],
 
-            // ── Naguilian ─────────────────────────────────────────────────────
+            // ── Narra ─────────────────────────────────────────────────────
             [
                 'id'                         => 'a1000014-0000-0000-0000-000000000014',
                 'rsbsa_no'                   => 'IV-02-0423-2026-014',
@@ -810,7 +810,7 @@ class FarmerSeeder extends Seeder
                 'sex'                        => 'Male',
                 'permanent_house_no'         => '31',
                 'permanent_street'           => 'Purok 2',
-                'permanent_brgy'             => 'Naguilian',
+                'permanent_brgy'             => 'Narra',
                 'permanent_city'             => 'Echague',
                 'permanent_province'         => 'Isabela',
                 'permanent_region'           => 'Region II',
@@ -846,7 +846,7 @@ class FarmerSeeder extends Seeder
                 'icc_ip_name'                => null,
                 'is_pwd'                     => false,
                 'is_4ps_beneficiary'         => true,
-                'association_1'              => 'Naguilian Corn Farmers',
+                'association_1'              => 'Narra Corn Farmers',
                 'association_2'              => null,
                 'association_3'              => null,
                 'livelihood_type'            => 'Farmer',

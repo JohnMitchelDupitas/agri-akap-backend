@@ -37,6 +37,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Farm Plots
     Route::get('/farm-plots', [FarmPlotController::class, 'index']);
+    Route::post('/farm-plots', [FarmPlotController::class, 'store'])
+        ->middleware('role:technician,admin');
     Route::get('/farm-plots/{id}', [FarmPlotController::class, 'show']);
 
     // Subsidy Programs

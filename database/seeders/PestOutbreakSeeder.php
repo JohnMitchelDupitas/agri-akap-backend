@@ -26,7 +26,7 @@ class PestOutbreakSeeder extends Seeder
 
         DB::table('pest_outbreaks')->insert([
 
-            // 1 – Brown Planthopper – Bangag rice (Eduardo Corpuz plot 1)
+            // 1 – Brown Planthopper – San Fabian rice (Eduardo Corpuz plot 1)
             [
                 'id'           => Str::uuid(),
                 'farm_plot_id' => 'b1000001-0000-0000-0000-000000000001',
@@ -42,7 +42,7 @@ class PestOutbreakSeeder extends Seeder
                 'updated_at'   => Carbon::create(2025, 6, 25),
             ],
 
-            // 2 – Golden Apple Snail – Bangag rice (Marilyn Tumibay)
+            // 2 – Golden Apple Snail – San Fabian rice (Marilyn Tumibay)
             [
                 'id'           => Str::uuid(),
                 'farm_plot_id' => 'b1000003-0000-0000-0000-000000000003',
@@ -122,7 +122,7 @@ class PestOutbreakSeeder extends Seeder
                 'updated_at'   => Carbon::create(2025, 2, 5),
             ],
 
-            // 7 – Stem Borer – Lucban rice (Felicito Talosig)
+            // 7 – Stem Borer – Soyung (Poblacion) rice (Felicito Talosig)
             [
                 'id'           => Str::uuid(),
                 'farm_plot_id' => 'b1000008-0000-0000-0000-000000000008',
@@ -154,7 +154,7 @@ class PestOutbreakSeeder extends Seeder
                 'updated_at'   => Carbon::create(2025, 2, 28),
             ],
 
-            // 9 – Brown Planthopper – Macarang rice (Danilo Turingan)
+            // 9 – Brown Planthopper – Magleticia rice (Danilo Turingan)
             [
                 'id'           => Str::uuid(),
                 'farm_plot_id' => 'b1000012-0000-0000-0000-000000000012',
@@ -170,7 +170,7 @@ class PestOutbreakSeeder extends Seeder
                 'updated_at'   => Carbon::create(2025, 6, 28),
             ],
 
-            // 10 – Fall Armyworm – Paddad corn (Jaime Manantan)
+            // 10 – Fall Armyworm – Pag-asa corn (Jaime Manantan)
             [
                 'id'           => Str::uuid(),
                 'farm_plot_id' => 'b1000014-0000-0000-0000-000000000014',
@@ -186,7 +186,7 @@ class PestOutbreakSeeder extends Seeder
                 'updated_at'   => Carbon::create(2025, 6, 2),
             ],
 
-            // 11 – Stem Borer – San Isidro rice (Nimrod Carpio)
+            // 11 – Stem Borer – San Antonio Ugad rice (Nimrod Carpio)
             [
                 'id'           => Str::uuid(),
                 'farm_plot_id' => 'b1000015-0000-0000-0000-000000000015',
@@ -202,7 +202,7 @@ class PestOutbreakSeeder extends Seeder
                 'updated_at'   => Carbon::create(2025, 7, 15),
             ],
 
-            // 12 – Fall Armyworm – Rang-ayan corn (Elvira Aguinaldo)
+            // 12 – Fall Armyworm – Rumang-ay corn (Elvira Aguinaldo)
             [
                 'id'           => Str::uuid(),
                 'farm_plot_id' => 'b1000017-0000-0000-0000-000000000017',
@@ -218,7 +218,7 @@ class PestOutbreakSeeder extends Seeder
                 'updated_at'   => Carbon::create(2025, 6, 1),
             ],
 
-            // 13 – Fall Armyworm – Naguilian corn (Roberto Cabanatan)
+            // 13 – Fall Armyworm – Narra corn (Roberto Cabanatan)
             [
                 'id'           => Str::uuid(),
                 'farm_plot_id' => 'b1000018-0000-0000-0000-000000000018',

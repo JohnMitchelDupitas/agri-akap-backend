@@ -62,19 +62,19 @@ class CropMonitoringSeeder extends Seeder
 
         DB::table('crop_monitorings')->insert([
 
-            // ── Rice plots – Bangag (Eduardo Corpuz b1000001) ─────────────────
+            // ── Rice plots – San Fabian (Eduardo Corpuz b1000001) ─────────────────
             $row('b1000001-0000-0000-0000-000000000001', 'Rice', 'Wet', 2022, 2.0,  8800, 8200, 6.2, 'Harvested'),
             $row('b1000001-0000-0000-0000-000000000001', 'Rice', 'Wet', 2023, 2.0,  9000, 8700, 6.1, 'Harvested'),
             $row('b1000001-0000-0000-0000-000000000001', 'Rice', 'Wet', 2024, 2.0,  9000, 5400, 6.0, 'Harvested'), // El Niño drop
             $row('b1000001-0000-0000-0000-000000000001', 'Rice', 'Wet', 2025, 2.0,  9200, null, 6.2, 'Vegetative'),
 
-            // ── Corn plot – Bangag (Eduardo Corpuz b1000002) ──────────────────
+            // ── Corn plot – San Fabian (Eduardo Corpuz b1000002) ──────────────────
             $row('b1000002-0000-0000-0000-000000000002', 'Corn', 'Dry', 2022, 1.0,  5200, 5000, 6.0, 'Harvested'),
             $row('b1000002-0000-0000-0000-000000000002', 'Corn', 'Dry', 2023, 1.0,  5300, 5100, 5.9, 'Harvested'),
             $row('b1000002-0000-0000-0000-000000000002', 'Corn', 'Dry', 2024, 1.0,  5300, 3200, 5.8, 'Harvested'), // El Niño
             $row('b1000002-0000-0000-0000-000000000002', 'Corn', 'Dry', 2025, 1.0,  5400, null, 6.0, 'Tasseling'),
 
-            // ── Rice – Bangag (Marilyn Tumibay b1000003) ──────────────────────
+            // ── Rice – San Fabian (Marilyn Tumibay b1000003) ──────────────────────
             $row('b1000003-0000-0000-0000-000000000003', 'Rice', 'Wet', 2022, 1.5,  6300, 5800, 5.9, 'Harvested'),
             $row('b1000003-0000-0000-0000-000000000003', 'Rice', 'Wet', 2023, 1.5,  6500, 6100, 6.0, 'Harvested'),
             $row('b1000003-0000-0000-0000-000000000003', 'Rice', 'Wet', 2024, 1.5,  6500, 4000, 5.8, 'Harvested'), // El Niño
@@ -104,13 +104,13 @@ class CropMonitoringSeeder extends Seeder
             $row('b1000007-0000-0000-0000-000000000007', 'Tobacco', 'Dry', 2024, 1.0, 1550, 1280, 5.7, 'Harvested'), // TMV loss
             $row('b1000007-0000-0000-0000-000000000007', 'Tobacco', 'Dry', 2025, 1.0, 1600,  null, 5.8, 'Topping'),
 
-            // ── Rice – Lucban (Felicito Talosig b1000008) ────────────────────
+            // ── Rice – Soyung (Poblacion) (Felicito Talosig b1000008) ────────────────────
             $row('b1000008-0000-0000-0000-000000000008', 'Rice', 'Wet', 2022, 2.0,  8600, 8300, 6.0, 'Harvested'),
             $row('b1000008-0000-0000-0000-000000000008', 'Rice', 'Wet', 2023, 2.0,  8800, 8600, 6.1, 'Harvested'),
             $row('b1000008-0000-0000-0000-000000000008', 'Rice', 'Wet', 2024, 2.0,  8800, 6200, 5.9, 'Harvested'),
             $row('b1000008-0000-0000-0000-000000000008', 'Rice', 'Wet', 2025, 2.0,  9000,  null, 6.0, 'Vegetative'),
 
-            // ── Vegetables – Lucban (Gloria Ferrer b1000009) ──────────────────
+            // ── Vegetables – Soyung (Poblacion) (Gloria Ferrer b1000009) ──────────────────
             $row('b1000009-0000-0000-0000-000000000009', 'Vegetables', 'Year-Round', 2022, 1.0, 10000, 9500, 6.5, 'Harvested'),
             $row('b1000009-0000-0000-0000-000000000009', 'Vegetables', 'Year-Round', 2023, 1.0, 10500, 10200, 6.5, 'Harvested'),
             $row('b1000009-0000-0000-0000-000000000009', 'Vegetables', 'Year-Round', 2024, 1.0, 10500, 8800, 6.4, 'Harvested'),
@@ -128,43 +128,43 @@ class CropMonitoringSeeder extends Seeder
             $row('b1000011-0000-0000-0000-000000000011', 'Rice', 'Wet', 2024, 1.0,  4400, 2900, 5.9, 'Harvested'),
             $row('b1000011-0000-0000-0000-000000000011', 'Rice', 'Wet', 2025, 1.0,  4500,  null, 6.0, 'Flowering'),
 
-            // ── Rice – Macarang (Danilo Turingan b1000012) ────────────────────
+            // ── Rice – Magleticia (Danilo Turingan b1000012) ────────────────────
             $row('b1000012-0000-0000-0000-000000000012', 'Rice', 'Wet', 2022, 3.0, 13200, 12900, 6.2, 'Harvested'),
             $row('b1000012-0000-0000-0000-000000000012', 'Rice', 'Wet', 2023, 3.0, 13500, 13200, 6.2, 'Harvested'),
             $row('b1000012-0000-0000-0000-000000000012', 'Rice', 'Wet', 2024, 3.0, 13500,  8100, 6.0, 'Harvested'), // El Niño + BPH
             $row('b1000012-0000-0000-0000-000000000012', 'Rice', 'Wet', 2025, 3.0, 13800,  null, 6.2, 'Vegetative'),
 
-            // ── Corn – Macarang (Vilma Batoon b1000013) ───────────────────────
+            // ── Corn – Magleticia (Vilma Batoon b1000013) ───────────────────────
             $row('b1000013-0000-0000-0000-000000000013', 'Corn', 'Wet', 2022, 1.5,  7800, 7500, 6.0, 'Harvested'),
             $row('b1000013-0000-0000-0000-000000000013', 'Corn', 'Wet', 2023, 1.5,  8000, 7900, 6.1, 'Harvested'),
             $row('b1000013-0000-0000-0000-000000000013', 'Corn', 'Wet', 2024, 1.5,  8000, 5500, 5.9, 'Harvested'),
             $row('b1000013-0000-0000-0000-000000000013', 'Corn', 'Wet', 2025, 1.5,  8200,  null, 6.0, 'Tasseling'),
 
-            // ── Corn – Paddad (Jaime Manantan b1000014) ───────────────────────
+            // ── Corn – Pag-asa (Jaime Manantan b1000014) ───────────────────────
             $row('b1000014-0000-0000-0000-000000000014', 'Corn', 'Wet', 2022, 2.0, 10200, 9800, 5.9, 'Harvested'),
             $row('b1000014-0000-0000-0000-000000000014', 'Corn', 'Wet', 2023, 2.0, 10500, 10100, 6.0, 'Harvested'),
             $row('b1000014-0000-0000-0000-000000000014', 'Corn', 'Wet', 2024, 2.0, 10500,  7200, 5.8, 'Harvested'), // Typhoon
             $row('b1000014-0000-0000-0000-000000000014', 'Corn', 'Wet', 2025, 2.0, 10800,  null, 6.0, 'Vegetative'),
 
-            // ── Rice – San Isidro (Nimrod Carpio b1000015) ────────────────────
+            // ── Rice – San Antonio Ugad (Nimrod Carpio b1000015) ────────────────────
             $row('b1000015-0000-0000-0000-000000000015', 'Rice', 'Wet', 2022, 2.5, 10750, 10200, 6.1, 'Harvested'),
             $row('b1000015-0000-0000-0000-000000000015', 'Rice', 'Wet', 2023, 2.5, 11000, 10800, 6.1, 'Harvested'),
             $row('b1000015-0000-0000-0000-000000000015', 'Rice', 'Wet', 2024, 2.5, 11000,  7700, 6.0, 'Harvested'),
             $row('b1000015-0000-0000-0000-000000000015', 'Rice', 'Wet', 2025, 2.5, 11250,  null, 6.1, 'Ripening'),
 
-            // ── Tobacco – San Isidro (Nimrod Carpio b1000016) ────────────────
+            // ── Tobacco – San Antonio Ugad (Nimrod Carpio b1000016) ────────────────
             $row('b1000016-0000-0000-0000-000000000016', 'Tobacco', 'Dry', 2022, 1.0, 1500, 1450, 5.7, 'Harvested'),
             $row('b1000016-0000-0000-0000-000000000016', 'Tobacco', 'Dry', 2023, 1.0, 1550, 1500, 5.8, 'Harvested'),
             $row('b1000016-0000-0000-0000-000000000016', 'Tobacco', 'Dry', 2024, 1.0, 1550, 1350, 5.7, 'Harvested'),
             $row('b1000016-0000-0000-0000-000000000016', 'Tobacco', 'Dry', 2025, 1.0, 1600,  null, 5.8, 'Topping'),
 
-            // ── Corn – Rang-ayan (Elvira Aguinaldo b1000017) ──────────────────
+            // ── Corn – Rumang-ay (Elvira Aguinaldo b1000017) ──────────────────
             $row('b1000017-0000-0000-0000-000000000017', 'Corn', 'Wet', 2022, 1.5,  7500, 7100, 6.0, 'Harvested'),
             $row('b1000017-0000-0000-0000-000000000017', 'Corn', 'Wet', 2023, 1.5,  7700, 7500, 6.0, 'Harvested'),
             $row('b1000017-0000-0000-0000-000000000017', 'Corn', 'Wet', 2024, 1.5,  7700,  4200, 5.8, 'Harvested'), // El Niño
             $row('b1000017-0000-0000-0000-000000000017', 'Corn', 'Wet', 2025, 1.5,  7900,  null, 6.0, 'Vegetative'),
 
-            // ── Corn – Naguilian (Roberto Cabanatan b1000018) ─────────────────
+            // ── Corn – Narra (Roberto Cabanatan b1000018) ─────────────────
             $row('b1000018-0000-0000-0000-000000000018', 'Corn', 'Wet', 2022, 2.0, 10000,  9700, 6.1, 'Harvested'),
             $row('b1000018-0000-0000-0000-000000000018', 'Corn', 'Wet', 2023, 2.0, 10200, 10000, 6.1, 'Harvested'),
             $row('b1000018-0000-0000-0000-000000000018', 'Corn', 'Wet', 2024, 2.0, 10200,  6800, 5.9, 'Harvested'), // Typhoon

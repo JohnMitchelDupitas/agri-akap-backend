@@ -26,9 +26,11 @@ class FarmerController extends Controller
     public function index(Request $request): JsonResponse
     {
         $searchQuery = $request->query('search');
+        $barangay = $request->query('barangay');
 
         $farmers = Farmer::withCount('farmPlots')
             ->when($searchQuery, fn ($q, $s) => $q->search($s))
+            ->when($barangay, fn ($q, $b) => $q->where('permanent_brgy', $b))
             ->orderBy('surname', 'asc')
             ->paginate(15);
 

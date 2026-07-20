@@ -55,6 +55,7 @@ class AuthController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'role' => $user->role, // Frontend uses this for RBAC routing
+                    'assigned_barangay' => $user->assigned_barangay,
                 ]
             ]
         ], 200);
@@ -85,7 +86,7 @@ class AuthController extends Controller
             'status' => 'success',
             'message' => 'Profile retrieved.',
             'data' => [
-                'user' => $request->user()->only(['id', 'name', 'email', 'role'])
+                'user' => $request->user()->only(['id', 'name', 'email', 'role', 'assigned_barangay'])
             ]
         ], 200);
     }

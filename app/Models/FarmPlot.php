@@ -16,9 +16,10 @@ class FarmPlot extends Model
         'farmer_id', 'location_brgy', 'location_city', 'location_province',
         'latitude', 'longitude', 'georef_id', 'total_parcel_area_ha', 'is_ancestral_domain',
         'is_agrarian_reform_beneficiary', 'ownership_type', 'land_owner_first_name',
-        'land_owner_surname', 'land_owner_ext_name', 'land_owner_rsbsa_no', 'proof_of_ownership_document',
+        'land_owner_surname', 'land_owner_ext_name', 'landowner_name', 'land_owner_rsbsa_no',
+        'proof_of_ownership_document',
         'commodity', 'size_ha', 'no_of_heads_or_trees', 'farm_type', 'is_organic',
-        'cropping_schedule', 'rotational_tiller_full_name', 'remarks'
+        'cropping_schedule', 'rotational_tiller_full_name', 'remarks',
     ];
 
     protected $casts = [

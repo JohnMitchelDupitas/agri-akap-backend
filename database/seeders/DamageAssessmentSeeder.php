@@ -30,7 +30,7 @@ class DamageAssessmentSeeder extends Seeder
 
         DB::table('damage_assessments')->insert([
 
-            // 1 – Typhoon Egay (2025) – Bangag rice plot (Eduardo Corpuz)
+            // 1 – Typhoon Egay (2025) – San Fabian rice plot (Eduardo Corpuz)
             [
                 'id'                  => Str::uuid(),
                 'farm_plot_id'        => 'b1000001-0000-0000-0000-000000000001',
@@ -54,7 +54,7 @@ class DamageAssessmentSeeder extends Seeder
                 'updated_at'          => Carbon::create(2025, 7, 28),
             ],
 
-            // 2 – Typhoon Egay – Bangag corn plot (Eduardo Corpuz)
+            // 2 – Typhoon Egay – San Fabian corn plot (Eduardo Corpuz)
             [
                 'id'                  => Str::uuid(),
                 'farm_plot_id'        => 'b1000002-0000-0000-0000-000000000002',
@@ -78,7 +78,7 @@ class DamageAssessmentSeeder extends Seeder
                 'updated_at'          => Carbon::create(2025, 7, 28),
             ],
 
-            // 3 – Typhoon Egay – Bangag rice (Marilyn Tumibay)
+            // 3 – Typhoon Egay – San Fabian rice (Marilyn Tumibay)
             [
                 'id'                  => Str::uuid(),
                 'farm_plot_id'        => 'b1000003-0000-0000-0000-000000000003',
@@ -174,7 +174,7 @@ class DamageAssessmentSeeder extends Seeder
                 'updated_at'          => Carbon::create(2025, 7, 29),
             ],
 
-            // 7 – Flooding 2025 – Lucban rice (Felicito Talosig)
+            // 7 – Flooding 2025 – Soyung (Poblacion) rice (Felicito Talosig)
             [
                 'id'                  => Str::uuid(),
                 'farm_plot_id'        => 'b1000008-0000-0000-0000-000000000008',
@@ -222,7 +222,7 @@ class DamageAssessmentSeeder extends Seeder
                 'updated_at'          => Carbon::create(2025, 7, 26),
             ],
 
-            // 9 – El Niño 2024 – Macarang rice (Danilo Turingan)
+            // 9 – El Niño 2024 – Magleticia rice (Danilo Turingan)
             [
                 'id'                  => Str::uuid(),
                 'farm_plot_id'        => 'b1000012-0000-0000-0000-000000000012',
@@ -246,7 +246,7 @@ class DamageAssessmentSeeder extends Seeder
                 'updated_at'          => Carbon::create(2024, 3, 18),
             ],
 
-            // 10 – Typhoon Egay – Paddad corn (Jaime Manantan)
+            // 10 – Typhoon Egay – Pag-asa corn (Jaime Manantan)
             [
                 'id'                  => Str::uuid(),
                 'farm_plot_id'        => 'b1000014-0000-0000-0000-000000000014',
@@ -270,7 +270,7 @@ class DamageAssessmentSeeder extends Seeder
                 'updated_at'          => Carbon::create(2025, 7, 30),
             ],
 
-            // 11 – Monsoon flood – San Isidro rice (Nimrod Carpio)
+            // 11 – Monsoon flood – San Antonio Ugad rice (Nimrod Carpio)
             [
                 'id'                  => Str::uuid(),
                 'farm_plot_id'        => 'b1000015-0000-0000-0000-000000000015',
@@ -294,7 +294,7 @@ class DamageAssessmentSeeder extends Seeder
                 'updated_at'          => Carbon::create(2025, 8, 7),
             ],
 
-            // 12 – El Niño 2024 – Rang-ayan corn (Elvira Aguinaldo)
+            // 12 – El Niño 2024 – Rumang-ay corn (Elvira Aguinaldo)
             [
                 'id'                  => Str::uuid(),
                 'farm_plot_id'        => 'b1000017-0000-0000-0000-000000000017',
@@ -318,7 +318,7 @@ class DamageAssessmentSeeder extends Seeder
                 'updated_at'          => Carbon::create(2024, 3, 19),
             ],
 
-            // 13 – Typhoon Egay – Naguilian corn (Roberto Cabanatan)
+            // 13 – Typhoon Egay – Narra corn (Roberto Cabanatan)
             [
                 'id'                  => Str::uuid(),
                 'farm_plot_id'        => 'b1000018-0000-0000-0000-000000000018',

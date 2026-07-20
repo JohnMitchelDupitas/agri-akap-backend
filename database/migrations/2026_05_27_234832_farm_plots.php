@@ -18,17 +18,22 @@ return new class extends Migration
             $table->string('location_province');
             $table->decimal('latitude', 10, 8)->nullable(); // 👈 Added nullable
             $table->decimal('longitude', 11, 8)->nullable(); // 👈 Added nullable
+            // Spatial POINT (lng, lat) SRID 4326 — used for ST_Distance_Sphere collision checks.
+            // Added via 2026_07_20_000010 on existing DBs; declared here for documentation.
+            // Fresh installs still get it from the follow-up migration.
 
             // Ownership & Tenurial
             $table->decimal('total_parcel_area_ha', 10, 4);
             $table->boolean('is_ancestral_domain')->default(false);
             $table->boolean('is_agrarian_reform_beneficiary')->default(false);
+            // RSBSA tenurial status: Owner | Tenant | Lessee (also accepts Registered Owner legacy)
             $table->string('ownership_type');
             
             // Land Owner details (Optional if the farmer is the registered owner)
             $table->string('land_owner_first_name')->nullable(); // 👈 Added nullable
             $table->string('land_owner_surname')->nullable();    // 👈 Added nullable
             $table->string('land_owner_ext_name')->nullable();   // 👈 Added nullable
+            $table->string('landowner_name')->nullable(); // Consolidated display name for geotag UI
             $table->string('proof_of_ownership_document');
 
             // Commodity

@@ -42,6 +42,7 @@ class UserSeeder extends Seeder
                 'name' => 'Barangay Official',
                 'password' => Hash::make('password123'),
                 'role' => 'barangay_official',
+                'assigned_barangay' => 'San Fabian',
                 'is_active' => true,
             ]
         );
