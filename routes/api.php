@@ -9,7 +9,6 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\BroadcastController;
 use App\Http\Controllers\IntelligenceController;
 use App\Http\Controllers\DamageAssessmentController;
-use App\Http\Controllers\PcicEnrollmentController;
 use App\Http\Controllers\ReportExportController;
 use App\Http\Controllers\ReportWorkflowController;
 use App\Http\Controllers\SyncController;
@@ -115,19 +114,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/damage-assessments/{id}/verify', [DamageAssessmentController::class, 'verify'])
         ->middleware('role:barangay_official,admin');
     Route::patch('/damage-assessments/{id}/decide', [DamageAssessmentController::class, 'decide'])
-        ->middleware('role:admin');
-    Route::patch('/damage-assessments/{id}/file-notice', [DamageAssessmentController::class, 'fileNotice'])
-        ->middleware('role:admin');
-    Route::get('/damage-assessments/{id}/notice', [DamageAssessmentController::class, 'noticeData'])
-        ->middleware('role:admin');
-
-    // PCIC Crop Insurance Enrollments
-    Route::get('/pcic-enrollments', [PcicEnrollmentController::class, 'index'])
-        ->middleware('role:admin');
-    Route::post('/pcic-enrollments', [PcicEnrollmentController::class, 'store'])
-        ->middleware('role:admin');
-    Route::patch('/pcic-enrollments/{id}', [PcicEnrollmentController::class, 'update'])
-        ->middleware('role:admin');
-    Route::get('/pcic-enrollments/export', [PcicEnrollmentController::class, 'export'])
         ->middleware('role:admin');
 });

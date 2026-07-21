@@ -119,14 +119,14 @@ class ReportExportController extends Controller
         $headers = [
             'Farmer', 'Barangay', 'Calamity Type', 'Calamity', 'Date of Calamity',
             'Commodity', 'Area (ha)', 'Area Destroyed (ha)', 'Crop Stage',
-            'Damage %', 'Est. Value Lost (PHP)', 'Status', 'PCIC Filed',
+            'Damage %', 'Est. Value Lost (PHP)', 'Status',
         ];
 
         $rows = DamageAssessment::with([
             'farmer:id,first_name,surname,permanent_brgy',
             'farmPlot:id,commodity,size_ha,location_brgy',
         ])
-            ->whereIn('status', ['Approved', 'Claimed'])
+            ->where('status', 'Approved')
             ->when($f['barangay'], function ($q) use ($f) {
                 $q->where(function ($sub) use ($f) {
                     $sub->whereHas('farmPlot', fn ($fp) => $fp->where('location_brgy', $f['barangay']))
@@ -151,7 +151,6 @@ class ReportExportController extends Controller
                 $a->damage_percentage,
                 $a->estimated_value_lost,
                 $a->status,
-                $a->is_pcic_notice_filed ? 'Yes' : 'No',
             ]);
 
         return [$headers, $rows];

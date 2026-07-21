@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\DamageAssessment;
 use App\Models\FarmPlot;
-use App\Models\PcicEnrollment;
 use App\Traits\DecodesBase64Image;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,6 +20,18 @@ class DamageAssessmentController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'status' => ['nullable', 'string'],
+            'calamity_type' => ['nullable', 'string'],
+            'barangay' => ['nullable', 'string'],
+            'commodity' => ['nullable', 'string'],
+            'severity' => ['nullable', Rule::in(['Low', 'Moderate', 'Severe'])],
+            'sort' => ['nullable', Rule::in(['date_of_calamity', 'created_at', 'damage_percentage'])],
+            'dir' => ['nullable', Rule::in(['asc', 'desc'])],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'page' => ['nullable', 'integer', 'min:1'],
+        ]);
+
         $user = $request->user();
 
         $query = DamageAssessment::with([
@@ -32,39 +43,46 @@ class DamageAssessmentController extends Controller
             'noticeFiler:id,name',
         ]);
 
-        if ($request->filled('status')) {
-            $query->where('status', $request->query('status'));
+        if (!empty($validated['status'])) {
+            $query->where('status', $validated['status']);
         }
 
-        if ($request->filled('calamity_type')) {
-            $query->where('calamity_type', $request->query('calamity_type'));
+        if (!empty($validated['calamity_type'])) {
+            $query->where('calamity_type', $validated['calamity_type']);
         }
 
-        if ($request->filled('barangay')) {
-            $brgy = $request->query('barangay');
+        if (!empty($validated['barangay'])) {
+            $brgy = $validated['barangay'];
             $query->where(function ($q) use ($brgy) {
                 $q->whereHas('farmer', fn ($f) => $f->where('permanent_brgy', $brgy))
                     ->orWhereHas('farmPlot', fn ($fp) => $fp->where('location_brgy', $brgy));
             });
         }
 
-        if ($request->filled('commodity')) {
-            $query->whereHas('farmPlot', fn ($fp) => $fp->where('commodity', $request->query('commodity')));
+        if (!empty($validated['commodity'])) {
+            $query->whereHas('farmPlot', fn ($fp) => $fp->where('commodity', $validated['commodity']));
         }
 
-        if ($request->query('priority') === 'unfiled') {
-            $query->where('status', 'Approved')->where('is_pcic_notice_filed', false);
+        if (!empty($validated['severity'])) {
+            $severity = strtolower((string) $validated['severity']);
+            if ($severity === 'low') {
+                $query->where('damage_percentage', '<', 30);
+            } elseif ($severity === 'moderate') {
+                $query->whereBetween('damage_percentage', [30, 60]);
+            } elseif ($severity === 'severe') {
+                $query->where('damage_percentage', '>', 60);
+            }
         }
 
         // Role-scoped default views
         if ($user->role === 'technician') {
             $query->where('technician_id', $user->id);
-        } elseif ($user->role === 'barangay_official' && !$request->filled('status')) {
+        } elseif ($user->role === 'barangay_official' && empty($validated['status'])) {
             $query->whereIn('status', ['Pending', 'Verified']);
         }
 
-        $sortField = $request->query('sort', 'date_of_calamity');
-        $sortDir = $request->query('dir', 'desc');
+        $sortField = $validated['sort'] ?? 'date_of_calamity';
+        $sortDir = $validated['dir'] ?? 'desc';
         if (in_array($sortField, ['date_of_calamity', 'created_at', 'damage_percentage'], true)) {
             $query->orderBy($sortField, $sortDir === 'asc' ? 'asc' : 'desc');
         } else {
@@ -74,7 +92,7 @@ class DamageAssessmentController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Damage assessments retrieved.',
-            'data' => $query->paginate((int) $request->query('per_page', 50)),
+            'data' => $query->paginate((int) ($validated['per_page'] ?? 50)),
         ], 200);
     }
 
@@ -159,12 +177,11 @@ class DamageAssessmentController extends Controller
             'device_id' => $validated['device_id'] ?? null,
             'photo_evidence_path' => $path,
             'status' => 'Pending',
-            'is_pcic_notice_filed' => false,
         ]);
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Notice of claim filed. Awaiting Barangay pre-assessment.',
+            'message' => 'Damage report recorded. Awaiting Barangay pre-assessment.',
             'data' => $assessment->load('farmer:id,first_name,surname'),
         ], 201);
     }
@@ -231,126 +248,6 @@ class DamageAssessmentController extends Controller
             'status' => 'success',
             'message' => "Assessment marked as {$validated['decision']}.",
             'data' => $assessment->fresh(),
-        ], 200);
-    }
-
-    /**
-     * MAO Admin files the PCIC Notice of Claim for an approved assessment.
-     */
-    public function fileNotice(Request $request, string $id): JsonResponse
-    {
-        $assessment = DamageAssessment::findOrFail($id);
-
-        if ($assessment->status !== 'Approved') {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Only Approved assessments can be filed with PCIC.',
-            ], 409);
-        }
-
-        if ($assessment->is_pcic_notice_filed) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'PCIC notice has already been filed for this assessment.',
-            ], 409);
-        }
-
-        $assessment->update([
-            'status' => 'Claimed',
-            'is_pcic_notice_filed' => true,
-            'pcic_notice_filed_at' => now(),
-            'pcic_notice_filed_by' => $request->user()->id,
-        ]);
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'PCIC Notice of Claim filed successfully.',
-            'data' => $assessment->fresh()->load('noticeFiler:id,name'),
-        ], 200);
-    }
-
-    /**
-     * Print-ready payload for the PCIC Notice of Claim document.
-     */
-    public function noticeData(string $id): JsonResponse
-    {
-        $assessment = DamageAssessment::with([
-            'farmer',
-            'farmPlot',
-            'technician:id,name',
-            'verifier:id,name',
-            'approver:id,name',
-            'noticeFiler:id,name',
-        ])->findOrFail($id);
-
-        if (!in_array($assessment->status, ['Approved', 'Claimed'], true)) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Notice data is only available for Approved or Claimed assessments.',
-            ], 409);
-        }
-
-        $enrollment = PcicEnrollment::where('farmer_id', $assessment->farmer_id)
-            ->when($assessment->farm_plot_id, fn ($q) => $q->where('farm_plot_id', $assessment->farm_plot_id))
-            ->whereIn('status', ['Active', 'Submitted'])
-            ->orderByDesc('enrolled_at')
-            ->first();
-
-        $farmer = $assessment->farmer;
-        $plot = $assessment->farmPlot;
-
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'assessment_id' => $assessment->id,
-                'status' => $assessment->status,
-                'is_pcic_notice_filed' => $assessment->is_pcic_notice_filed,
-                'pcic_notice_filed_at' => $assessment->pcic_notice_filed_at,
-                'farmer' => [
-                    'name' => trim(($farmer->first_name ?? '') . ' ' . ($farmer->surname ?? '')),
-                    'rsbsa_no' => $farmer->rsbsa_no,
-                    'mobile_number' => $farmer->mobile_number,
-                    'barangay' => $farmer->permanent_brgy,
-                    'city' => $farmer->permanent_city,
-                    'province' => $farmer->permanent_province,
-                    'sex' => $farmer->sex,
-                    'birthdate' => optional($farmer->birthdate)->format('Y-m-d'),
-                ],
-                'plot' => [
-                    'commodity' => $plot->commodity ?? null,
-                    'size_ha' => $plot->size_ha ?? null,
-                    'location_brgy' => $plot->location_brgy ?? null,
-                    'farm_type' => $plot->farm_type ?? null,
-                ],
-                'calamity' => [
-                    'type' => $assessment->calamity_type,
-                    'name' => $assessment->calamity_name,
-                    'date' => optional($assessment->date_of_calamity)->format('Y-m-d'),
-                    'crop_stage' => $assessment->crop_stage,
-                    'damage_percentage' => $assessment->damage_percentage,
-                    'area_destroyed_ha' => $assessment->area_destroyed_ha,
-                    'estimated_value_lost' => $assessment->estimated_value_lost,
-                ],
-                'geo' => [
-                    'latitude' => $assessment->latitude,
-                    'longitude' => $assessment->longitude,
-                ],
-                'photo_url' => $assessment->photo_url,
-                'audit' => [
-                    'technician' => $assessment->technician?->name,
-                    'verifier' => $assessment->verifier?->name,
-                    'approver' => $assessment->approver?->name,
-                    'notice_filer' => $assessment->noticeFiler?->name,
-                    'verified_at' => $assessment->verified_at,
-                    'approved_at' => $assessment->approved_at,
-                ],
-                'enrollment' => $enrollment ? [
-                    'policy_reference' => $enrollment->policy_reference,
-                    'coverage_year' => $enrollment->coverage_year,
-                    'crop_season' => $enrollment->crop_season,
-                    'insured_area_ha' => $enrollment->insured_area_ha,
-                ] : null,
-            ],
         ], 200);
     }
 }

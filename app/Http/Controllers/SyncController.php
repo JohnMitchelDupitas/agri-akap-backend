@@ -135,7 +135,6 @@ class SyncController extends Controller
                 'device_id' => $item['device_id'] ?? $deviceId,
                 'photo_evidence_path' => $path,
                 'status' => 'Pending',
-                'is_pcic_notice_filed' => false,
             ]);
 
             return $this->itemResult($clientId ?? $assessment->id, 'synced', 'Assessment filed.');
