@@ -1,10 +1,4 @@
----
 
-## 🟢 2. Backend Repository (`agri-akap-backend`)
-
-Save the content below as **`README.md`** inside your `agri-akap-backend` root folder.
-
-```markdown
 # 🌾 AGRI-AKAP — Backend (Laravel 11 REST API)
 
 > **Agricultural Assistance and Knowledge Access Portal** > **Institution:** Isabela State University – Echague Campus | CCSICT  
