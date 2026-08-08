@@ -12,6 +12,7 @@ use App\Http\Controllers\DamageAssessmentController;
 use App\Http\Controllers\ReportExportController;
 use App\Http\Controllers\ReportWorkflowController;
 use App\Http\Controllers\SyncController;
+use App\Http\Controllers\WeatherController;
 use Illuminate\Support\Facades\Route;
 
 // ── Public ────────────────────────────────────────────────────────────────────
@@ -58,6 +59,15 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Offline Bulk Sync
     Route::post('/sync/bulk', [SyncController::class, 'bulkUpload']);
+
+    // Climate Monitoring (hyper-local Open-Meteo cache + weather SMS advisories)
+    Route::get('/weather/current', [WeatherController::class, 'current']);
+    Route::get('/weather/heatmap', [WeatherController::class, 'heatmap']);
+    Route::get('/weather/barangays', [WeatherController::class, 'barangays']);
+    Route::get('/weather/advisories', [WeatherController::class, 'advisories'])
+        ->middleware('role:admin');
+    Route::post('/weather/advisories/send', [WeatherController::class, 'sendAdvisory'])
+        ->middleware('role:admin');
 
     // Analytics & Reports
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);

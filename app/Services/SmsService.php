@@ -71,9 +71,17 @@ class SmsService
     protected function sendViaSemaphore(string $csv, string $message, int $count): array
     {
         $config = config('services.sms.semaphore');
+        $apiKey = $config['key'] ?? '';
 
-        $response = Http::post('https://api.semaphore.co/api/v4/messages', [
-            'apikey' => $config['key'] ?? '',
+        // Avoid accidental SMS charges when the key is missing or in local/testing.
+        if ($apiKey === '' || app()->environment('local', 'testing')) {
+            Log::info('Semaphore SMS mocked', ['recipients' => $count, 'message' => $message]);
+
+            return $this->result(true, 'semaphore-mock', $count, ['mocked' => true, 'recipients' => $count]);
+        }
+
+        $response = Http::asForm()->post('https://api.semaphore.co/api/v4/messages', [
+            'apikey' => $apiKey,
             'number' => $csv,
             'message' => $message,
             'sendername' => $config['sender'] ?? 'MAO-ECHAGUE',

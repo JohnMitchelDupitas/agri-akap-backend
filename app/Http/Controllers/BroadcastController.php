@@ -63,16 +63,17 @@ class BroadcastController extends Controller
         // 3. Dispatch through the configured SMS gateway (IPROG / Semaphore).
         $result = $this->sms->sendBulk($phoneNumbers, $validated['message_body']);
         $status = $result['success']
-            ? 'Success (' . $result['provider'] . ')'
-            : 'Failed (' . $result['provider'] . ')';
+            ? SmsBroadcast::STATUS_SENT
+            : SmsBroadcast::STATUS_FAILED;
 
         // 4. Log the Campaign in our database
         $broadcast = SmsBroadcast::create([
             'target_barangay' => $validated['target_barangay'] ?? 'All',
             'target_commodity' => $validated['target_commodity'] ?? 'All',
             'message_body' => $validated['message_body'],
+            'trigger_type' => SmsBroadcast::TRIGGER_MANUAL,
             'recipient_count' => $recipientCount,
-            'status' => $status
+            'status' => $status,
         ]);
 
         return response()->json([
