@@ -56,6 +56,7 @@ class SyncController extends Controller
             'planting_logs' => [],
             'pest_reports' => [],
             'farm_profiles' => [],
+            'field_distributions' => [],
         ];
 
         foreach ((array) $request->input('distributions', []) as $item) {
@@ -68,7 +69,8 @@ class SyncController extends Controller
 
         $hasOfflineBatch = $request->has('planting_logs')
             || $request->has('pest_reports')
-            || $request->has('farm_profiles');
+            || $request->has('farm_profiles')
+            || $request->has('field_distributions');
 
         if ($hasOfflineBatch) {
             try {
@@ -92,11 +94,18 @@ class SyncController extends Controller
                     }
                 }
 
+                if ($request->has('field_distributions')) {
+                    foreach ((array) $request->input('field_distributions', []) as $item) {
+                        $results['field_distributions'][] = $this->syncFieldDistribution($item, $technicianId, $deviceId);
+                    }
+                }
+
                 // Fail the batch if any offline item failed validation/insert.
                 $offlineFailed = collect([
                     ...$results['planting_logs'],
                     ...$results['pest_reports'],
                     ...$results['farm_profiles'],
+                    ...$results['field_distributions'],
                 ])->contains(fn ($r) => ($r['outcome'] ?? '') === 'failed');
 
                 if ($offlineFailed) {
@@ -309,6 +318,44 @@ class SyncController extends Controller
         ]);
 
         return $this->itemResult($clientId ?? $row->id, 'synced', 'Pest report saved.');
+    }
+
+    private function syncFieldDistribution(array $item, string $technicianId, ?string $deviceId): array
+    {
+        $clientId = $item['client_id'] ?? ($item['id'] ?? null);
+        $rsbsa = $item['rsbsa_id'] ?? null;
+        $farmerId = $this->resolveFarmerId($item['farmer_id'] ?? null, $rsbsa);
+
+        $validator = Validator::make($item, [
+            'rsbsa_id' => 'required|string|max:64',
+            'item_dispensed' => 'required|string|max:255',
+            'quantity' => 'nullable',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->itemResult($clientId, 'failed', $validator->errors()->first());
+        }
+
+        if ($clientId && DB::table('field_distribution_logs')->where('client_id', $clientId)->exists()) {
+            return $this->itemResult($clientId, 'duplicate', 'Field distribution already synced.');
+        }
+
+        DB::table('field_distribution_logs')->insert([
+            'id' => (string) Str::uuid(),
+            'client_id' => $clientId,
+            'farmer_id' => $farmerId,
+            'technician_id' => $technicianId,
+            'rsbsa_id' => $rsbsa,
+            'item_dispensed' => $item['item_dispensed'],
+            'quantity' => isset($item['quantity']) ? (string) $item['quantity'] : null,
+            'dispensed_at' => $item['timestamp'] ?? now(),
+            'program_id' => $item['program_id'] ?? null,
+            'device_id' => $item['device_id'] ?? $deviceId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $this->itemResult($clientId, 'synced', 'Field distribution saved.');
     }
 
     private function syncFarmProfile(array $item, ?string $deviceId): array
