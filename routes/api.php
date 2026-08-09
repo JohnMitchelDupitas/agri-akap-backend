@@ -57,8 +57,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/distributions/verify', [DistributionController::class, 'verify']);
     Route::post('/distributions/claim', [DistributionController::class, 'processClaim']);
 
-    // Offline Bulk Sync
-    Route::post('/sync/bulk', [SyncController::class, 'bulkUpload']);
+    // Offline Bulk Sync (Dexie → Laravel)
+    Route::post('/sync/bulk', [SyncController::class, 'bulkSync']);
 
     // Climate Monitoring (hyper-local Open-Meteo cache + weather SMS advisories)
     Route::get('/weather/current', [WeatherController::class, 'current']);
