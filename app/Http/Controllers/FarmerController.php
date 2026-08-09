@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Imports\FarmersImport;
 use App\Models\Farmer;
 use App\Http\Requests\StoreFarmerRequest;
 use App\Services\SmsService;
@@ -11,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Maatwebsite\Excel\Facades\Excel;
 
 class FarmerController extends Controller
 {
@@ -21,24 +23,103 @@ class FarmerController extends Controller
     }
 
     /**
-     * Retrieve paginated RSBSA farmer registry with search capabilities.
+     * Retrieve paginated RSBSA farmer registry with role-based scoping.
+     *
+     * - admin: all farmers
+     * - barangay_official / barangay: only assigned_barangay
+     * - technician: all farmers; search optimized for rsbsa_no / surname
      */
     public function index(Request $request): JsonResponse
     {
-        $searchQuery = $request->query('search');
+        $user = $request->user();
+        $role = $user?->role;
+        $searchQuery = trim((string) $request->query('search', ''));
         $barangay = $request->query('barangay');
 
-        $farmers = Farmer::withCount('farmPlots')
-            ->when($searchQuery, fn ($q, $s) => $q->search($s))
-            ->when($barangay, fn ($q, $b) => $q->where('permanent_brgy', $b))
-            ->orderBy('surname', 'asc')
-            ->paginate(15);
+        $query = Farmer::withCount('farmPlots');
+
+        if (in_array($role, ['barangay_official', 'barangay'], true)) {
+            $assigned = $user->assigned_barangay;
+            if (empty($assigned)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No barangay assignment on this account.',
+                ], 403);
+            }
+            $query->where('permanent_brgy', $assigned);
+        } elseif ($role === 'admin') {
+            // Full registry — optional barangay filter still allowed
+            $query->when($barangay, fn ($q, $b) => $q->where('permanent_brgy', $b));
+        } elseif ($role === 'technician') {
+            // Field search across Echague; keep barangay filter optional
+            $query->when($barangay, fn ($q, $b) => $q->where('permanent_brgy', $b));
+        } else {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'You do not have permission to view the farmer registry.',
+            ], 403);
+        }
+
+        if ($searchQuery !== '') {
+            if ($role === 'technician') {
+                // Optimized field lookup: RSBSA number or last name (surname)
+                $term = '%'.$searchQuery.'%';
+                $query->where(function ($q) use ($term, $searchQuery) {
+                    $q->where('rsbsa_no', 'like', $term)
+                        ->orWhere('surname', 'like', $term)
+                        ->orWhere('first_name', 'like', $term);
+
+                    // Exact RSBSA match first-class for QR / typed IDs
+                    if (strlen($searchQuery) >= 5) {
+                        $q->orWhere('rsbsa_no', $searchQuery);
+                    }
+                });
+            } else {
+                $query->search($searchQuery);
+            }
+        }
+
+        $farmers = $query->orderBy('surname', 'asc')->paginate(15);
 
         return response()->json([
             'status' => 'success',
             'message' => 'Farmers registry retrieved.',
             'data' => $farmers,
         ]);
+    }
+
+    /**
+     * Bulk import the official RSBSA Excel masterlist (admin only).
+     * Upserts by rsbsa_no so re-uploads update existing farmers.
+     */
+    public function import(Request $request): JsonResponse
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
+        ]);
+
+        try {
+            $import = new FarmersImport;
+            Excel::import($import, $request->file('excel_file'));
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'RSBSA masterlist imported successfully.',
+                'data' => [
+                    'created' => $import->created,
+                    'updated' => $import->updated,
+                    'skipped' => $import->skipped,
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            Log::error('Farmer Excel import failed: '.$e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Import failed. Check the file format and try again.',
+                'error' => app()->isLocal() ? $e->getMessage() : null,
+            ], 500);
+        }
     }
 
     /**

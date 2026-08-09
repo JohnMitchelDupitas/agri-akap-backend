@@ -28,6 +28,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Farmer Registry
     Route::get('/farmers', [FarmerController::class, 'index']);
     Route::post('/farmers', [FarmerController::class, 'store']);
+    Route::post('/farmers/import', [FarmerController::class, 'import'])
+        ->middleware('role:admin');
     Route::get('/farmers/lookup', [FarmerController::class, 'lookup']);
     Route::get('/farmers/barangays', [FarmerController::class, 'barangays']);
     Route::get('/farmers/commodities', [FarmerController::class, 'commodities']);
