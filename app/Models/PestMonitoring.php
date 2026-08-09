@@ -19,6 +19,7 @@ class PestMonitoring extends Model
         'farmer_id',
         'technician_id',
         'crop',
+        'crop_stage',
         'pest_name',
         'incidence',
         'severity',

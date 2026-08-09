@@ -13,6 +13,7 @@ use App\Http\Controllers\ReportExportController;
 use App\Http\Controllers\ReportWorkflowController;
 use App\Http\Controllers\SyncController;
 use App\Http\Controllers\WeatherController;
+use App\Http\Controllers\AnalyticsController;
 use Illuminate\Support\Facades\Route;
 
 // ── Public ────────────────────────────────────────────────────────────────────
@@ -82,6 +83,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/report', [DashboardController::class, 'accomplishmentReport'])
         ->middleware('role:admin');
     Route::get('/reports/export/{type}', [ReportExportController::class, 'export'])
+        ->middleware('role:admin');
+
+    // 4-Tier Enterprise Analytics (Descriptive → Diagnostic → Predictive → Prescriptive)
+    Route::get('/analytics/dashboard', [AnalyticsController::class, 'dashboard'])
         ->middleware('role:admin');
 
     // Statutory Report Workflows
