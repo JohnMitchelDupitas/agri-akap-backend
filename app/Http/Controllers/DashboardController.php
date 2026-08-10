@@ -7,16 +7,262 @@ use App\Models\DamageAssessment;
 use App\Models\Distribution;
 use App\Models\Farmer;
 use App\Models\FarmPlot;
+use App\Models\PestMonitoring;
 use App\Models\PestOutbreak;
+use App\Models\PlantingLog;
 use App\Models\Program;
 use App\Models\ReportWorkflow;
+use App\Models\WeatherCache;
 use App\Services\ReportAggregationService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
+    /**
+     * Unified 4-tier Admin Command Center (real DB aggregates).
+     * GET /api/dashboard/overview
+     */
+    public function overview(): JsonResponse
+    {
+        $descriptive = $this->overviewDescriptive();
+        $diagnostic = $this->overviewDiagnostic();
+        $predictive = $this->overviewPredictive();
+        $prescriptive = $this->overviewPrescriptive($predictive);
+
+        return response()->json([
+            'data' => [
+                'descriptive' => $descriptive,
+                'diagnostic' => $diagnostic,
+                'predictive' => $predictive,
+                'prescriptive' => $prescriptive,
+            ],
+        ]);
+    }
+
+    private function overviewDescriptive(): array
+    {
+        $totalFarmers = Farmer::query()->count();
+
+        $totalHectares = 0.0;
+        if (Schema::hasTable('planting_logs')) {
+            $totalHectares = (float) PlantingLog::query()
+                ->where('status', 'Active')
+                ->sum('area_planted');
+        }
+
+        $activeSubsidies = Distribution::query()
+            ->where(function ($q) {
+                $q->where('claimed_at', '>=', Carbon::now()->subDays(90))
+                    ->orWhere(function ($inner) {
+                        $inner->whereNull('claimed_at')
+                            ->where('created_at', '>=', Carbon::now()->subDays(90));
+                    });
+            })
+            ->count();
+
+        return [
+            'total_farmers' => $totalFarmers,
+            'total_hectares' => round($totalHectares, 2),
+            'active_subsidies' => $activeSubsidies,
+        ];
+    }
+
+    private function overviewDiagnostic(): array
+    {
+        if (! Schema::hasTable('pest_monitoring')) {
+            return ['pest_breakdown' => []];
+        }
+
+        $hasCropStage = Schema::hasColumn('pest_monitoring', 'crop_stage');
+        $hasPestName = Schema::hasColumn('pest_monitoring', 'pest_name');
+        $hasSeverity = Schema::hasColumn('pest_monitoring', 'severity');
+
+        $stageExpr = $hasCropStage
+            ? "COALESCE(NULLIF(crop_stage, ''), 'Unspecified')"
+            : "'Unspecified'";
+
+        $damageExpr = match (true) {
+            $hasPestName && $hasSeverity => "COALESCE(NULLIF(pest_name, ''), NULLIF(severity, ''), 'Unknown')",
+            $hasPestName => "COALESCE(NULLIF(pest_name, ''), 'Unknown')",
+            $hasSeverity => "COALESCE(NULLIF(severity, ''), 'Unknown')",
+            default => "'Unknown'",
+        };
+
+        // Use positional GROUP BY (1, 2) to satisfy MariaDB ONLY_FULL_GROUP_BY
+        // when selecting expression aliases.
+        $pestBreakdown = DB::table('pest_monitoring')
+            ->selectRaw("{$stageExpr} as crop_stage")
+            ->selectRaw("{$damageExpr} as damage_type")
+            ->selectRaw('COUNT(*) as total')
+            ->groupByRaw('1, 2')
+            ->orderByDesc('total')
+            ->get()
+            ->map(fn ($row) => [
+                'crop_stage' => $row->crop_stage,
+                'damage_type' => $row->damage_type,
+                'total' => (int) $row->total,
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'pest_breakdown' => $pestBreakdown,
+        ];
+    }
+
+    private function overviewPredictive(): array
+    {
+        $harvestForecast = [];
+
+        if (Schema::hasTable('planting_logs')) {
+            $rows = PlantingLog::query()
+                ->where('status', 'Active')
+                ->select('crop_type')
+                ->selectRaw('SUM(area_planted) as total_area_ha')
+                ->selectRaw('COUNT(*) as field_count')
+                ->groupBy('crop_type')
+                ->orderByDesc('total_area_ha')
+                ->get();
+
+            foreach ($rows as $row) {
+                $yieldPerHa = $this->assumedYieldKgPerHa($row->crop_type);
+                $area = (float) $row->total_area_ha;
+                $harvestForecast[] = [
+                    'crop_type' => $row->crop_type ?: 'Unknown',
+                    'total_area_ha' => round($area, 2),
+                    'field_count' => (int) $row->field_count,
+                    'yield_kg_per_ha' => $yieldPerHa,
+                    'estimated_harvest_kg' => round($area * $yieldPerHa, 2),
+                ];
+            }
+        }
+
+        $weatherRisk = [];
+        if (Schema::hasTable('tbl_weather_cache')) {
+            $etColumn = Schema::hasColumn('tbl_weather_cache', 'evapotranspiration')
+                ? 'evapotranspiration'
+                : (Schema::hasColumn('tbl_weather_cache', 'et0_fao_evapotranspiration')
+                    ? 'et0_fao_evapotranspiration'
+                    : null);
+
+            $query = WeatherCache::query()
+                ->whereDate('forecast_date', '>=', Carbon::today())
+                ->whereDate('forecast_date', '<=', Carbon::today()->addDays(3))
+                ->where(function ($q) use ($etColumn) {
+                    $q->where('precipitation_probability', '>', 80);
+                    if ($etColumn) {
+                        $q->orWhere($etColumn, '>', 5);
+                    }
+                });
+
+            $select = [
+                'barangay_name',
+                DB::raw('MAX(precipitation_probability) as max_precip'),
+            ];
+            if ($etColumn) {
+                $select[] = DB::raw("MAX({$etColumn}) as max_et0");
+            }
+
+            $weatherRows = $query
+                ->select($select)
+                ->groupBy('barangay_name')
+                ->orderByDesc('max_precip')
+                ->get();
+
+            foreach ($weatherRows as $w) {
+                $precip = (int) ($w->max_precip ?? 0);
+                $et0 = (float) ($w->max_et0 ?? 0);
+                $risks = [];
+                if ($precip > 80) {
+                    $risks[] = 'Flood Risk';
+                }
+                if ($etColumn && $et0 > 5) {
+                    $risks[] = 'Drought Risk';
+                }
+                if (! $risks) {
+                    continue;
+                }
+
+                $weatherRisk[] = [
+                    'barangay' => $w->barangay_name,
+                    'precipitation_probability' => $precip,
+                    'et0' => $etColumn ? round($et0, 3) : null,
+                    'risks' => $risks,
+                    'primary_risk' => $precip > 80 ? 'Flood Risk' : 'Drought Risk',
+                ];
+            }
+        }
+
+        return [
+            'harvest_forecast' => $harvestForecast,
+            'weather_risk' => $weatherRisk,
+        ];
+    }
+
+    /**
+     * @param  array{harvest_forecast: array<int, mixed>, weather_risk: array<int, mixed>}  $predictive
+     */
+    private function overviewPrescriptive(array $predictive): array
+    {
+        $alerts = [];
+
+        foreach ($predictive['weather_risk'] as $risk) {
+            $barangay = $risk['barangay'];
+            $risks = $risk['risks'] ?? [];
+
+            if (in_array('Flood Risk', $risks, true)) {
+                $alerts[] = [
+                    'type' => 'weather_alert',
+                    'barangay' => $barangay,
+                    'message' => "High Flood Risk in {$barangay}. Recommend buffer seed allocation and SMS warning.",
+                ];
+            }
+
+            if (in_array('Drought Risk', $risks, true)) {
+                $alerts[] = [
+                    'type' => 'weather_alert',
+                    'barangay' => $barangay,
+                    'message' => "High Drought Risk in {$barangay} (elevated ET0). Recommend irrigation advisory and SMS warning.",
+                ];
+            }
+        }
+
+        foreach ($predictive['harvest_forecast'] as $crop) {
+            if (($crop['total_area_ha'] ?? 0) >= 50) {
+                $alerts[] = [
+                    'type' => 'harvest_readiness',
+                    'barangay' => null,
+                    'message' => sprintf(
+                        'Large active %s area (%.1f ha). Recommend staging post-harvest logistics for ~%s kg projected yield.',
+                        $crop['crop_type'],
+                        $crop['total_area_ha'],
+                        number_format($crop['estimated_harvest_kg'])
+                    ),
+                ];
+            }
+        }
+
+        return [
+            'alerts' => $alerts,
+        ];
+    }
+
+    private function assumedYieldKgPerHa(?string $cropType): float
+    {
+        $crop = strtolower(trim((string) $cropType));
+
+        return match (true) {
+            str_contains($crop, 'rice') => 4500.0,
+            str_contains($crop, 'corn') => 5000.0,
+            str_contains($crop, 'high') => 3500.0,
+            default => 4000.0,
+        };
+    }
+
     /**
      * Geospatial payload for the GIS map view.
      * Returns geotagged farm plots, damage points, and pest outbreaks.

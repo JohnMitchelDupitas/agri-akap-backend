@@ -74,6 +74,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Analytics & Reports
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
+    Route::get('/dashboard/overview', [DashboardController::class, 'overview'])
+        ->middleware('role:admin');
     Route::get('/dashboard/map-data', [DashboardController::class, 'mapData'])
         ->middleware('role:admin,technician');
     Route::get('/dashboard/forecast', [DashboardController::class, 'forecast'])

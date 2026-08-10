@@ -96,9 +96,9 @@ class AnalyticsController extends Controller
             ? "COALESCE(NULLIF(pest_monitoring.crop_stage, ''), 'Unspecified')"
             : "'Unspecified'";
 
-        $byCropStage = PestMonitoring::query()
+        $byCropStage = DB::table('pest_monitoring')
             ->selectRaw("{$stageExpr} as crop_stage, COUNT(*) as total")
-            ->groupBy(DB::raw($stageExpr))
+            ->groupByRaw('1')
             ->orderByDesc('total')
             ->get()
             ->map(fn ($r) => [
@@ -108,14 +108,12 @@ class AnalyticsController extends Controller
             ->values()
             ->all();
 
-        $byBarangay = PestMonitoring::query()
+        $byBarangay = DB::table('pest_monitoring')
             ->leftJoin('farmers', 'pest_monitoring.farmer_id', '=', 'farmers.id')
-            ->select(
-                DB::raw("COALESCE(farmers.permanent_brgy, 'Unspecified') as barangay"),
-                DB::raw('COUNT(*) as total'),
-                DB::raw('SUM(CASE WHEN pest_monitoring.is_outbreak = 1 THEN 1 ELSE 0 END) as outbreaks')
-            )
-            ->groupBy(DB::raw("COALESCE(farmers.permanent_brgy, 'Unspecified')"))
+            ->selectRaw("COALESCE(farmers.permanent_brgy, 'Unspecified') as barangay")
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw('SUM(CASE WHEN pest_monitoring.is_outbreak = 1 THEN 1 ELSE 0 END) as outbreaks')
+            ->groupByRaw('1')
             ->orderByDesc('total')
             ->limit(15)
             ->get()
@@ -127,14 +125,12 @@ class AnalyticsController extends Controller
             ->values()
             ->all();
 
-        $matrix = PestMonitoring::query()
+        $matrix = DB::table('pest_monitoring')
             ->leftJoin('farmers', 'pest_monitoring.farmer_id', '=', 'farmers.id')
-            ->select(
-                DB::raw("{$stageExpr} as crop_stage"),
-                DB::raw("COALESCE(farmers.permanent_brgy, 'Unspecified') as barangay"),
-                DB::raw('COUNT(*) as total')
-            )
-            ->groupBy(DB::raw($stageExpr), DB::raw("COALESCE(farmers.permanent_brgy, 'Unspecified')"))
+            ->selectRaw("{$stageExpr} as crop_stage")
+            ->selectRaw("COALESCE(farmers.permanent_brgy, 'Unspecified') as barangay")
+            ->selectRaw('COUNT(*) as total')
+            ->groupByRaw('1, 2')
             ->orderByDesc('total')
             ->limit(40)
             ->get()
