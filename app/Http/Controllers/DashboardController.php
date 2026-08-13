@@ -64,54 +64,124 @@ class DashboardController extends Controller
             })
             ->count();
 
+        $activeCalamitiesPests = 0;
+        if (Schema::hasTable('pest_outbreaks')) {
+            $activeCalamitiesPests += PestOutbreak::query()->where('status', 'Active')->count();
+        }
+        if (Schema::hasTable('damage_assessments')) {
+            $activeCalamitiesPests += DamageAssessment::query()->where('status', 'Pending')->count();
+        }
+
+        $pendingSubsidyReleases = 0;
+        if (Schema::hasTable('distributions')) {
+            $pendingSubsidyReleases = Distribution::query()->where('status', 'pending_sync')->count();
+        }
+
         return [
             'total_farmers' => $totalFarmers,
             'total_hectares' => round($totalHectares, 2),
             'active_subsidies' => $activeSubsidies,
+            'active_calamities_pests' => $activeCalamitiesPests,
+            'pending_subsidy_releases' => $pendingSubsidyReleases,
         ];
     }
 
     private function overviewDiagnostic(): array
     {
-        if (! Schema::hasTable('pest_monitoring')) {
-            return ['pest_breakdown' => []];
+        $pestBreakdown = [];
+
+        if (Schema::hasTable('pest_monitoring')) {
+            $hasCropStage = Schema::hasColumn('pest_monitoring', 'crop_stage');
+            $hasPestName = Schema::hasColumn('pest_monitoring', 'pest_name');
+            $hasSeverity = Schema::hasColumn('pest_monitoring', 'severity');
+
+            $stageExpr = $hasCropStage
+                ? "COALESCE(NULLIF(crop_stage, ''), 'Unspecified')"
+                : "'Unspecified'";
+
+            $damageExpr = match (true) {
+                $hasPestName && $hasSeverity => "COALESCE(NULLIF(pest_name, ''), NULLIF(severity, ''), 'Unknown')",
+                $hasPestName => "COALESCE(NULLIF(pest_name, ''), 'Unknown')",
+                $hasSeverity => "COALESCE(NULLIF(severity, ''), 'Unknown')",
+                default => "'Unknown'",
+            };
+
+            // Use positional GROUP BY (1, 2) to satisfy MariaDB ONLY_FULL_GROUP_BY
+            // when selecting expression aliases.
+            $pestBreakdown = DB::table('pest_monitoring')
+                ->selectRaw("{$stageExpr} as crop_stage")
+                ->selectRaw("{$damageExpr} as damage_type")
+                ->selectRaw('COUNT(*) as total')
+                ->groupByRaw('1, 2')
+                ->orderByDesc('total')
+                ->get()
+                ->map(fn ($row) => [
+                    'crop_stage' => $row->crop_stage,
+                    'damage_type' => $row->damage_type,
+                    'total' => (int) $row->total,
+                ])
+                ->values()
+                ->all();
         }
 
-        $hasCropStage = Schema::hasColumn('pest_monitoring', 'crop_stage');
-        $hasPestName = Schema::hasColumn('pest_monitoring', 'pest_name');
-        $hasSeverity = Schema::hasColumn('pest_monitoring', 'severity');
+        return [
+            'pest_breakdown' => $pestBreakdown,
+            'crop_distribution' => $this->overviewCropDistribution(),
+            'distributions_by_barangay' => $this->overviewDistributionsByBarangay(),
+        ];
+    }
 
-        $stageExpr = $hasCropStage
-            ? "COALESCE(NULLIF(crop_stage, ''), 'Unspecified')"
-            : "'Unspecified'";
+    /**
+     * Farm plot count/area grouped by commodity, for the "Crop Distribution"
+     * doughnut chart (e.g. Rice vs Corn vs Other).
+     */
+    private function overviewCropDistribution(): array
+    {
+        if (! Schema::hasTable('farm_plots')) {
+            return [];
+        }
 
-        $damageExpr = match (true) {
-            $hasPestName && $hasSeverity => "COALESCE(NULLIF(pest_name, ''), NULLIF(severity, ''), 'Unknown')",
-            $hasPestName => "COALESCE(NULLIF(pest_name, ''), 'Unknown')",
-            $hasSeverity => "COALESCE(NULLIF(severity, ''), 'Unknown')",
-            default => "'Unknown'",
-        };
-
-        // Use positional GROUP BY (1, 2) to satisfy MariaDB ONLY_FULL_GROUP_BY
-        // when selecting expression aliases.
-        $pestBreakdown = DB::table('pest_monitoring')
-            ->selectRaw("{$stageExpr} as crop_stage")
-            ->selectRaw("{$damageExpr} as damage_type")
-            ->selectRaw('COUNT(*) as total')
-            ->groupByRaw('1, 2')
-            ->orderByDesc('total')
+        return DB::table('farm_plots')
+            ->selectRaw("COALESCE(NULLIF(commodity, ''), 'Other') as commodity")
+            ->selectRaw('COUNT(*) as total_plots')
+            ->selectRaw('SUM(size_ha) as total_area_ha')
+            ->groupByRaw('1')
+            ->orderByDesc('total_plots')
             ->get()
             ->map(fn ($row) => [
-                'crop_stage' => $row->crop_stage,
-                'damage_type' => $row->damage_type,
+                'commodity' => $row->commodity,
+                'total_plots' => (int) $row->total_plots,
+                'total_area_ha' => round((float) $row->total_area_ha, 2),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Recent (90-day) subsidy distribution counts grouped by the recipient
+     * farmer's barangay, for the "Recent Subsidy Distributions" bar chart.
+     */
+    private function overviewDistributionsByBarangay(): array
+    {
+        if (! Schema::hasTable('distributions') || ! Schema::hasTable('farmers')) {
+            return [];
+        }
+
+        return DB::table('distributions')
+            ->join('farmers', 'distributions.farmer_id', '=', 'farmers.id')
+            ->where('distributions.created_at', '>=', Carbon::now()->subDays(90))
+            ->selectRaw("COALESCE(NULLIF(farmers.permanent_brgy, ''), 'Unspecified') as barangay")
+            ->selectRaw('COUNT(*) as total')
+            ->groupByRaw('1')
+            ->orderByDesc('total')
+            ->limit(8)
+            ->get()
+            ->map(fn ($row) => [
+                'barangay' => $row->barangay,
                 'total' => (int) $row->total,
             ])
             ->values()
             ->all();
-
-        return [
-            'pest_breakdown' => $pestBreakdown,
-        ];
     }
 
     private function overviewPredictive(): array
@@ -208,7 +278,7 @@ class DashboardController extends Controller
      */
     private function overviewPrescriptive(array $predictive): array
     {
-        $alerts = [];
+        $alerts = $this->overviewPestAlerts();
 
         foreach ($predictive['weather_risk'] as $risk) {
             $barangay = $risk['barangay'];
@@ -249,6 +319,42 @@ class DashboardController extends Controller
         return [
             'alerts' => $alerts,
         ];
+    }
+
+    /**
+     * Critical, actionable alerts for currently Active pest outbreaks.
+     * Kept intentionally short (top 5, most recent) to avoid noise.
+     */
+    private function overviewPestAlerts(): array
+    {
+        if (! Schema::hasTable('pest_outbreaks')) {
+            return [];
+        }
+
+        return PestOutbreak::query()
+            ->where('status', 'Active')
+            ->with('farmPlot:id,location_brgy,commodity')
+            ->orderByDesc('date_spotted')
+            ->limit(5)
+            ->get()
+            ->map(function ($p) {
+                $brgy = optional($p->farmPlot)->location_brgy;
+                $commodity = optional($p->farmPlot)->commodity;
+
+                return [
+                    'type' => 'pest_outbreak',
+                    'barangay' => $brgy,
+                    'message' => sprintf(
+                        'Active %s outbreak (%s severity) in %s%s. Recommend field validation and targeted spray advisory.',
+                        $p->pest_name ?: 'pest',
+                        $p->severity ?: 'unspecified',
+                        $brgy ?: 'an unlisted barangay',
+                        $commodity ? " ({$commodity})" : ''
+                    ),
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     private function assumedYieldKgPerHa(?string $cropType): float

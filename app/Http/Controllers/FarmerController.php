@@ -35,6 +35,7 @@ class FarmerController extends Controller
         $role = $user?->role;
         $searchQuery = trim((string) $request->query('search', ''));
         $barangay = $request->query('barangay');
+        $commodity = trim((string) $request->query('commodity', ''));
 
         $query = Farmer::withCount('farmPlots');
 
@@ -58,6 +59,13 @@ class FarmerController extends Controller
                 'status' => 'error',
                 'message' => 'You do not have permission to view the farmer registry.',
             ], 403);
+        }
+
+        // Barangay crop forms: only farmers with a matching farm-plot commodity
+        if ($commodity !== '') {
+            $query->whereHas('farmPlots', function ($q) use ($commodity) {
+                $q->whereRaw('LOWER(commodity) = ?', [Str::lower($commodity)]);
+            });
         }
 
         if ($searchQuery !== '') {
@@ -261,6 +269,12 @@ class FarmerController extends Controller
         try {
             $validatedData['qr_code_hash'] = (string) Str::uuid();
 
+            // Empty RSBSA becomes null via ConvertEmptyStringsToNull — assign one
+            // so new enrollments are never saved without an RSBSA reference number.
+            if (empty($validatedData['rsbsa_no'])) {
+                $validatedData['rsbsa_no'] = $this->generateUniqueRsbsaNo();
+            }
+
             // Handle optional farmer photo captured during enrollment.
             if ($request->filled('photo_base64')) {
                 $path = $this->storeBase64Image($request->input('photo_base64'), 'farmer-photos');
@@ -320,5 +334,30 @@ class FarmerController extends Controller
         } catch (\Throwable $e) {
             Log::warning('Enrollment SMS receipt failed: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Local Echague RSBSA reference: IV-02-0423-{YEAR}-{SEQ}.
+     * Matches FarmerSeeder convention; sequential and unique (incl. soft-deleted).
+     */
+    protected function generateUniqueRsbsaNo(): string
+    {
+        $prefix = 'IV-02-0423-'.now()->year.'-';
+
+        $maxSeq = (int) Farmer::withTrashed()
+            ->where('rsbsa_no', 'like', $prefix.'%')
+            ->lockForUpdate()
+            ->selectRaw('MAX(CAST(SUBSTRING_INDEX(rsbsa_no, "-", -1) AS UNSIGNED)) as max_seq')
+            ->value('max_seq');
+
+        $next = $maxSeq + 1;
+
+        do {
+            $candidate = $prefix.str_pad((string) $next, 3, '0', STR_PAD_LEFT);
+            $exists = Farmer::withTrashed()->where('rsbsa_no', $candidate)->exists();
+            $next++;
+        } while ($exists);
+
+        return $candidate;
     }
 }

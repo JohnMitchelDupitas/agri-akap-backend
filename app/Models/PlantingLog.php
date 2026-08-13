@@ -17,6 +17,7 @@ class PlantingLog extends Model
         'id',
         'client_id',
         'farmer_id',
+        'farm_plot_id',
         'technician_id',
         'crop_type',
         'variety',
@@ -24,6 +25,8 @@ class PlantingLog extends Model
         'date_planted',
         'status',
         'water_source',
+        'farm_location',
+        'remarks',
         'latitude',
         'longitude',
         'device_id',
@@ -39,6 +42,11 @@ class PlantingLog extends Model
     public function farmer(): BelongsTo
     {
         return $this->belongsTo(Farmer::class);
+    }
+
+    public function farmPlot(): BelongsTo
+    {
+        return $this->belongsTo(FarmPlot::class, 'farm_plot_id');
     }
 
     public function technician(): BelongsTo

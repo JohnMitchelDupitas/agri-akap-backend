@@ -117,6 +117,9 @@ class DamageAssessmentController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        $user = $request->user();
+        $isBarangayEncoder = $user->role === 'barangay_official';
+
         $validated = $request->validate([
             'id' => 'nullable|uuid',
             'farm_plot_id' => 'required|exists:farm_plots,id',
@@ -125,13 +128,15 @@ class DamageAssessmentController extends Controller
             'calamity_name' => 'nullable|string|max:255',
             'crop_stage' => ['nullable', Rule::in(['Seedling', 'Vegetative', 'Reproductive', 'Maturity', 'Harvested'])],
             'area_destroyed_ha' => 'nullable|numeric|min:0',
+            'area_planted_ha' => 'nullable|numeric|min:0',
             'date_of_calamity' => 'required|date',
             'damage_percentage' => 'required|numeric|min:0|max:100',
             'estimated_value_lost' => 'nullable|numeric|min:0',
             'latitude' => 'nullable|numeric|between:-90,90',
             'longitude' => 'nullable|numeric|between:-180,180',
             'device_id' => 'nullable|string|max:255',
-            'photo_base64' => 'required|string',
+            // Field technicians must attach geotagged photo evidence; barangay ledger encoding may omit it.
+            'photo_base64' => ($isBarangayEncoder ? 'nullable' : 'required').'|string',
         ]);
 
         // Idempotency: if this client UUID was already synced, return it.
@@ -152,8 +157,28 @@ class DamageAssessmentController extends Controller
             $validated['farmer_id'] = FarmPlot::whereKey($validated['farm_plot_id'])->value('farmer_id');
         }
 
-        $path = $this->storeBase64Image($request->input('photo_base64'), 'assessments');
-        if ($path === null) {
+        if ($isBarangayEncoder && $user->assigned_barangay) {
+            $farmerBrgy = optional(
+                \App\Models\Farmer::find($validated['farmer_id'])
+            )->permanent_brgy;
+            if ($farmerBrgy && $farmerBrgy !== $user->assigned_barangay) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'You can only encode farmers from your assigned barangay.',
+                ], 403);
+            }
+        }
+
+        $path = null;
+        if (!empty($validated['photo_base64'])) {
+            $path = $this->storeBase64Image($validated['photo_base64'], 'assessments');
+            if ($path === null) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'The photo evidence could not be decoded. Please recapture.',
+                ], 422);
+            }
+        } elseif (! $isBarangayEncoder) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'The photo evidence could not be decoded. Please recapture.',
@@ -164,11 +189,12 @@ class DamageAssessmentController extends Controller
             'id' => $validated['id'] ?? null,
             'farm_plot_id' => $validated['farm_plot_id'],
             'farmer_id' => $validated['farmer_id'],
-            'technician_id' => $request->user()->id,
+            'technician_id' => $user->id,
             'calamity_type' => $validated['calamity_type'],
             'calamity_name' => $validated['calamity_name'] ?? $validated['calamity_type'],
             'crop_stage' => $validated['crop_stage'] ?? null,
             'area_destroyed_ha' => $validated['area_destroyed_ha'] ?? null,
+            'area_planted_ha' => $validated['area_planted_ha'] ?? null,
             'date_of_calamity' => $validated['date_of_calamity'],
             'damage_percentage' => $validated['damage_percentage'],
             'estimated_value_lost' => $validated['estimated_value_lost'] ?? null,
@@ -176,12 +202,17 @@ class DamageAssessmentController extends Controller
             'longitude' => $validated['longitude'] ?? null,
             'device_id' => $validated['device_id'] ?? null,
             'photo_evidence_path' => $path,
-            'status' => 'Pending',
+            // Barangay-encoded ledger entries are already pre-validated at source.
+            'status' => $isBarangayEncoder ? 'Verified' : 'Pending',
+            'verified_by' => $isBarangayEncoder ? $user->id : null,
+            'verified_at' => $isBarangayEncoder ? now() : null,
         ]);
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Damage report recorded. Awaiting Barangay pre-assessment.',
+            'message' => $isBarangayEncoder
+                ? 'Calamity assessment encoded and saved for MAO reporting.'
+                : 'Damage report recorded. Awaiting Barangay pre-assessment.',
             'data' => $assessment->load('farmer:id,first_name,surname'),
         ], 201);
     }

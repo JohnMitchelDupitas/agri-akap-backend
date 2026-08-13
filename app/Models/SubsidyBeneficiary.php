@@ -1,0 +1,38 @@
+<?php
+
+namespace App\Models;
+
+use App\Models\Traits\HasUuid;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class SubsidyBeneficiary extends Model
+{
+    use HasFactory, HasUuid;
+
+    protected $table = 'tbl_subsidy_beneficiaries';
+
+    protected $fillable = [
+        'program_id',
+        'farmer_rsbsa_no',
+        'calculated_allocation',
+        'status',
+        'claimed_at',
+    ];
+
+    protected $casts = [
+        'calculated_allocation' => 'integer',
+        'claimed_at' => 'datetime',
+    ];
+
+    public function program(): BelongsTo
+    {
+        return $this->belongsTo(SubsidyProgram::class, 'program_id');
+    }
+
+    public function farmer(): BelongsTo
+    {
+        return $this->belongsTo(Farmer::class, 'farmer_rsbsa_no', 'rsbsa_no');
+    }
+}

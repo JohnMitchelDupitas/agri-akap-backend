@@ -17,9 +17,16 @@ class PestMonitoring extends Model
         'id',
         'client_id',
         'farmer_id',
+        'farm_plot_id',
         'technician_id',
         'crop',
         'crop_stage',
+        'variety',
+        'area_planted',
+        'days_after_planting',
+        'area_damage_pct',
+        'farm_location',
+        'date_of_inspection',
         'pest_name',
         'incidence',
         'severity',
@@ -37,6 +44,9 @@ class PestMonitoring extends Model
     protected $casts = [
         'is_outbreak' => 'boolean',
         'incidence' => 'integer',
+        'area_planted' => 'decimal:4',
+        'area_damage_pct' => 'decimal:2',
+        'date_of_inspection' => 'date',
         'latitude' => 'decimal:7',
         'longitude' => 'decimal:7',
     ];
@@ -44,6 +54,11 @@ class PestMonitoring extends Model
     public function farmer(): BelongsTo
     {
         return $this->belongsTo(Farmer::class);
+    }
+
+    public function farmPlot(): BelongsTo
+    {
+        return $this->belongsTo(FarmPlot::class, 'farm_plot_id');
     }
 
     public function technician(): BelongsTo

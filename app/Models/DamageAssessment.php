@@ -20,6 +20,7 @@ class DamageAssessment extends Model
         'calamity_type',
         'crop_stage',
         'area_destroyed_ha',
+        'area_planted_ha',
         'date_of_calamity',
         'damage_percentage',
         'estimated_value_lost',
@@ -40,6 +41,7 @@ class DamageAssessment extends Model
         'damage_percentage' => 'decimal:2',
         'estimated_value_lost' => 'decimal:2',
         'area_destroyed_ha' => 'decimal:4',
+        'area_planted_ha' => 'decimal:4',
         'latitude' => 'decimal:8',
         'longitude' => 'decimal:8',
         'verified_at' => 'datetime',
@@ -83,6 +85,11 @@ class DamageAssessment extends Model
     public function approver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function noticeFiler(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'pcic_notice_filed_by');
     }
 
 }

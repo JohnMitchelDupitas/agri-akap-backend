@@ -14,6 +14,10 @@ use App\Http\Controllers\ReportWorkflowController;
 use App\Http\Controllers\SyncController;
 use App\Http\Controllers\WeatherController;
 use App\Http\Controllers\AnalyticsController;
+use App\Http\Controllers\SubsidyController;
+use App\Http\Controllers\PlantingLogController;
+use App\Http\Controllers\PestMonitoringController;
+use App\Http\Controllers\ExecutiveReportingController;
 use Illuminate\Support\Facades\Route;
 
 // ── Public ────────────────────────────────────────────────────────────────────
@@ -54,6 +58,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/programs/{id}/restock', [ProgramController::class, 'restock'])
         ->middleware('role:admin');
     Route::patch('/programs/{id}/config', [ProgramController::class, 'updateConfig'])
+        ->middleware('role:admin');
+
+    // Subsidy Auto-Masterlist programs (tbl_subsidy_programs)
+    Route::get('/subsidies', [SubsidyController::class, 'index'])
+        ->middleware('role:admin');
+    Route::post('/subsidies', [SubsidyController::class, 'store'])
+        ->middleware('role:admin');
+    Route::post('/subsidies/{id}/restock', [SubsidyController::class, 'restock'])
+        ->middleware('role:admin');
+    Route::patch('/subsidies/{id}/config', [SubsidyController::class, 'updateConfig'])
+        ->middleware('role:admin');
+    Route::post('/subsidies/{id}/generate-masterlist', [SubsidyController::class, 'generateMasterlist'])
+        ->middleware('role:admin');
+    Route::get('/subsidies/{id}/masterlist', [SubsidyController::class, 'masterlist'])
+        ->middleware('role:admin');
+    Route::patch('/subsidies/{id}/beneficiaries/{beneficiaryId}/claim', [SubsidyController::class, 'claimBeneficiary'])
         ->middleware('role:admin');
 
     // Distribution / Claiming
@@ -133,5 +153,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/damage-assessments/{id}/verify', [DamageAssessmentController::class, 'verify'])
         ->middleware('role:barangay_official,admin');
     Route::patch('/damage-assessments/{id}/decide', [DamageAssessmentController::class, 'decide'])
+        ->middleware('role:admin');
+
+    // Barangay / field encoding ledgers (planting + pest)
+    Route::get('/planting-logs', [PlantingLogController::class, 'index']);
+    Route::post('/planting-logs', [PlantingLogController::class, 'store'])
+        ->middleware('role:barangay_official,technician,admin');
+    Route::get('/pest-monitoring', [PestMonitoringController::class, 'index']);
+    Route::post('/pest-monitoring', [PestMonitoringController::class, 'store'])
+        ->middleware('role:barangay_official,technician,admin');
+
+    // MAO Executive Reporting Suite (live encoded data)
+    Route::get('/executive-reports', [ExecutiveReportingController::class, 'index'])
         ->middleware('role:admin');
 });
