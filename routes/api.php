@@ -18,6 +18,7 @@ use App\Http\Controllers\SubsidyController;
 use App\Http\Controllers\PlantingLogController;
 use App\Http\Controllers\PestMonitoringController;
 use App\Http\Controllers\ExecutiveReportingController;
+use App\Http\Controllers\ReportsController;
 use Illuminate\Support\Facades\Route;
 
 // ── Public ────────────────────────────────────────────────────────────────────
@@ -166,4 +167,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // MAO Executive Reporting Suite (live encoded data)
     Route::get('/executive-reports', [ExecutiveReportingController::class, 'index'])
         ->middleware('role:admin');
+
+    // MAO Dedicated Report Endpoints (new report module)
+    Route::get('/reports/subsidies',         [ReportsController::class, 'subsidies'])        ->middleware('role:admin');
+    Route::get('/reports/crop-production',   [ReportsController::class, 'cropProduction'])   ->middleware('role:admin');
+    Route::get('/reports/pest-surveillance', [ReportsController::class, 'pestSurveillance']) ->middleware('role:admin');
+    Route::get('/reports/damage-calamity',   [ReportsController::class, 'damageCalamity'])   ->middleware('role:admin');
 });
