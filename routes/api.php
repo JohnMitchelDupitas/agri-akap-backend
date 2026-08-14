@@ -63,7 +63,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Subsidy Auto-Masterlist programs (tbl_subsidy_programs)
     Route::get('/subsidies', [SubsidyController::class, 'index'])
-        ->middleware('role:admin');
+        ->middleware('role:admin,technician');
     Route::post('/subsidies', [SubsidyController::class, 'store'])
         ->middleware('role:admin');
     Route::post('/subsidies/{id}/restock', [SubsidyController::class, 'restock'])
@@ -74,8 +74,12 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:admin');
     Route::get('/subsidies/{id}/masterlist', [SubsidyController::class, 'masterlist'])
         ->middleware('role:admin');
+    Route::post('/subsidies/{id}/verify-farmer', [SubsidyController::class, 'verifyFarmer'])
+        ->middleware('role:admin,technician');
+    Route::post('/subsidies/{id}/claim-farmer', [SubsidyController::class, 'claimForFarmer'])
+        ->middleware('role:admin,technician');
     Route::patch('/subsidies/{id}/beneficiaries/{beneficiaryId}/claim', [SubsidyController::class, 'claimBeneficiary'])
-        ->middleware('role:admin');
+        ->middleware('role:admin,technician');
 
     // Distribution / Claiming
     Route::post('/distributions/verify', [DistributionController::class, 'verify']);
@@ -97,6 +101,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
     Route::get('/dashboard/overview', [DashboardController::class, 'overview'])
         ->middleware('role:admin');
+    Route::get('/dashboard/barangay', [DashboardController::class, 'barangayOverview'])
+        ->middleware('role:barangay_official,admin');
     Route::get('/dashboard/map-data', [DashboardController::class, 'mapData'])
         ->middleware('role:admin,technician');
     Route::get('/dashboard/forecast', [DashboardController::class, 'forecast'])
@@ -151,6 +157,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/damage-assessments', [DamageAssessmentController::class, 'index']);
     Route::post('/damage-assessments', [DamageAssessmentController::class, 'store']);
     Route::get('/damage-assessments/{id}', [DamageAssessmentController::class, 'show']);
+    Route::patch('/damage-assessments/{id}/field-validate', [DamageAssessmentController::class, 'fieldValidate'])
+        ->middleware('role:technician,admin');
     Route::patch('/damage-assessments/{id}/verify', [DamageAssessmentController::class, 'verify'])
         ->middleware('role:barangay_official,admin');
     Route::patch('/damage-assessments/{id}/decide', [DamageAssessmentController::class, 'decide'])
@@ -161,6 +169,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/planting-logs', [PlantingLogController::class, 'store'])
         ->middleware('role:barangay_official,technician,admin');
     Route::get('/pest-monitoring', [PestMonitoringController::class, 'index']);
+    Route::get('/pest-monitoring/{id}', [PestMonitoringController::class, 'show']);
     Route::post('/pest-monitoring', [PestMonitoringController::class, 'store'])
         ->middleware('role:barangay_official,technician,admin');
 

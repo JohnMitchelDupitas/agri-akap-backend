@@ -28,6 +28,7 @@ class DamageAssessmentController extends Controller
             'severity' => ['nullable', Rule::in(['Low', 'Moderate', 'Severe'])],
             'sort' => ['nullable', Rule::in(['date_of_calamity', 'created_at', 'damage_percentage'])],
             'dir' => ['nullable', Rule::in(['asc', 'desc'])],
+            'dispatch_queue' => ['nullable', 'boolean'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
@@ -35,7 +36,7 @@ class DamageAssessmentController extends Controller
         $user = $request->user();
 
         $query = DamageAssessment::with([
-            'farmer:id,first_name,surname,rsbsa_no,permanent_brgy,mobile_number',
+            'farmer:id,first_name,surname,middle_name,ext_name,rsbsa_no,permanent_brgy,mobile_number',
             'farmPlot:id,commodity,size_ha,location_brgy',
             'technician:id,name',
             'verifier:id,name',
@@ -76,7 +77,13 @@ class DamageAssessmentController extends Controller
 
         // Role-scoped default views
         if ($user->role === 'technician') {
-            $query->where('technician_id', $user->id);
+            if ($request->boolean('dispatch_queue')) {
+                $query->where(function ($q) {
+                    $q->whereNull('photo_evidence_path')->orWhereNull('latitude');
+                });
+            } else {
+                $query->where('technician_id', $user->id);
+            }
         } elseif ($user->role === 'barangay_official' && empty($validated['status'])) {
             $query->whereIn('status', ['Pending', 'Verified']);
         }
@@ -247,6 +254,49 @@ class DamageAssessmentController extends Controller
             'message' => 'Assessment pre-assessed and endorsed to MAO for approval.',
             'data' => $assessment->fresh(),
         ], 200);
+    }
+
+    /**
+     * Technician on-site validation: attach GPS + photo evidence to a barangay report.
+     */
+    public function fieldValidate(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+            'photo_base64' => 'required|string',
+            'area_destroyed_ha' => 'nullable|numeric|min:0',
+            'damage_percentage' => 'nullable|numeric|min:0|max:100',
+            'crop_stage' => ['nullable', Rule::in(['Seedling', 'Vegetative', 'Reproductive', 'Maturity', 'Harvested'])],
+            'remarks' => 'nullable|string|max:1000',
+        ]);
+
+        $assessment = DamageAssessment::findOrFail($id);
+        $path = $this->storeBase64Image($validated['photo_base64'], 'assessments');
+        if ($path === null) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'The photo evidence could not be decoded. Please recapture.',
+            ], 422);
+        }
+
+        $assessment->update([
+            'latitude' => $validated['latitude'],
+            'longitude' => $validated['longitude'],
+            'photo_evidence_path' => $path,
+            'technician_id' => $request->user()->id,
+            'area_destroyed_ha' => $validated['area_destroyed_ha'] ?? $assessment->area_destroyed_ha,
+            'damage_percentage' => $validated['damage_percentage'] ?? $assessment->damage_percentage,
+            'crop_stage' => $validated['crop_stage'] ?? $assessment->crop_stage,
+            'remarks' => $validated['remarks'] ?? $assessment->remarks,
+            'status' => $assessment->status === 'Pending' ? 'Verified' : $assessment->status,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Field validation saved. Assessment added to the MAO rehabilitation masterlist.',
+            'data' => $assessment->fresh()->load('farmer', 'farmPlot'),
+        ]);
     }
 
     /**

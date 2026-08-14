@@ -70,16 +70,23 @@ class FarmerController extends Controller
 
         if ($searchQuery !== '') {
             if ($role === 'technician') {
-                // Optimized field lookup: RSBSA number or last name (surname)
                 $term = '%'.$searchQuery.'%';
                 $query->where(function ($q) use ($term, $searchQuery) {
                     $q->where('rsbsa_no', 'like', $term)
                         ->orWhere('surname', 'like', $term)
-                        ->orWhere('first_name', 'like', $term);
+                        ->orWhere('first_name', 'like', $term)
+                        ->orWhere('middle_name', 'like', $term)
+                        ->orWhereRaw(
+                            "CONCAT(surname, ', ', first_name, ' ', COALESCE(middle_name, '')) LIKE ?",
+                            [$term]
+                        )
+                        ->orWhereRaw(
+                            "CONCAT(first_name, ' ', surname) LIKE ?",
+                            [$term]
+                        );
 
-                    // Exact RSBSA match first-class for QR / typed IDs
-                    if (strlen($searchQuery) >= 5) {
-                        $q->orWhere('rsbsa_no', $searchQuery);
+                    if (Str::isUuid($searchQuery)) {
+                        $q->orWhere('id', $searchQuery);
                     }
                 });
             } else {
@@ -87,7 +94,8 @@ class FarmerController extends Controller
             }
         }
 
-        $farmers = $query->orderBy('surname', 'asc')->paginate(15);
+        $perPage = min(50, max(5, (int) $request->query('per_page', 15)));
+        $farmers = $query->orderBy('surname', 'asc')->paginate($perPage);
 
         return response()->json([
             'status' => 'success',
@@ -160,7 +168,10 @@ class FarmerController extends Controller
 
         $farmer = Farmer::with('farmPlots')
             ->where(function ($q) use ($qr) {
-                $q->where('id', $qr)->orWhere('qr_code_hash', $qr);
+                $q->where('id', $qr)
+                    ->orWhere('qr_code_hash', $qr)
+                    ->orWhere('rsbsa_no', $qr)
+                    ->orWhere('transaction_code', $qr);
             })
             ->first();
 

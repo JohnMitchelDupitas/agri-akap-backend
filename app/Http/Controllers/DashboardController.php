@@ -43,38 +43,127 @@ class DashboardController extends Controller
         ]);
     }
 
+    /**
+     * Barangay portal KPIs scoped to the official's assigned_barangay.
+     * GET /api/dashboard/barangay
+     */
+    public function barangayOverview(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $barangay = $user?->assigned_barangay;
+
+        if ($user?->role === 'admin' && $request->filled('barangay')) {
+            $barangay = $request->query('barangay');
+        }
+
+        if (empty($barangay)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No barangay assignment on this account.',
+            ], 403);
+        }
+
+        $farmers = Farmer::query()->where('permanent_brgy', $barangay)->count();
+
+        $plantingEntries = 0;
+        if (Schema::hasTable('planting_logs')) {
+            $plantingEntries = PlantingLog::query()
+                ->whereHas('farmer', fn ($f) => $f->where('permanent_brgy', $barangay))
+                ->count();
+        }
+
+        $pestReports = 0;
+        if (Schema::hasTable('pest_monitoring')) {
+            $pestReports = PestMonitoring::query()
+                ->whereHas('farmer', fn ($f) => $f->where('permanent_brgy', $barangay))
+                ->count();
+        }
+
+        $pendingDamage = 0;
+        if (Schema::hasTable('damage_assessments')) {
+            $pendingDamage = DamageAssessment::query()
+                ->where('status', 'Pending')
+                ->where(function ($q) use ($barangay) {
+                    $q->whereHas('farmer', fn ($f) => $f->where('permanent_brgy', $barangay))
+                        ->orWhereHas('farmPlot', fn ($fp) => $fp->where('location_brgy', $barangay));
+                })
+                ->count();
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'barangay' => $barangay,
+                'farmers' => $farmers,
+                'planting_entries' => $plantingEntries,
+                'pest_reports' => $pestReports,
+                'pending_damage' => $pendingDamage,
+            ],
+        ]);
+    }
+
     private function overviewDescriptive(): array
     {
         $totalFarmers = Farmer::query()->count();
+        $totalHectares = $this->overviewActiveHectares();
 
-        $totalHectares = 0.0;
-        if (Schema::hasTable('planting_logs')) {
-            $totalHectares = (float) PlantingLog::query()
-                ->where('status', 'Active')
-                ->sum('area_planted');
+        $activeSubsidies = 0;
+        if (Schema::hasTable('tbl_subsidy_beneficiaries')) {
+            $activeSubsidies += DB::table('tbl_subsidy_beneficiaries')
+                ->where('status', 'Claimed')
+                ->where(function ($q) {
+                    $q->where('claimed_at', '>=', Carbon::now()->subDays(90))
+                        ->orWhere(function ($inner) {
+                            $inner->whereNull('claimed_at')
+                                ->where('updated_at', '>=', Carbon::now()->subDays(90));
+                        });
+                })
+                ->count();
         }
-
-        $activeSubsidies = Distribution::query()
-            ->where(function ($q) {
-                $q->where('claimed_at', '>=', Carbon::now()->subDays(90))
-                    ->orWhere(function ($inner) {
-                        $inner->whereNull('claimed_at')
-                            ->where('created_at', '>=', Carbon::now()->subDays(90));
-                    });
-            })
-            ->count();
+        if (Schema::hasTable('distributions')) {
+            $activeSubsidies += Distribution::query()
+                ->where(function ($q) {
+                    $q->where('claimed_at', '>=', Carbon::now()->subDays(90))
+                        ->orWhere(function ($inner) {
+                            $inner->whereNull('claimed_at')
+                                ->where('created_at', '>=', Carbon::now()->subDays(90));
+                        });
+                })
+                ->count();
+        }
 
         $activeCalamitiesPests = 0;
         if (Schema::hasTable('pest_outbreaks')) {
-            $activeCalamitiesPests += PestOutbreak::query()->where('status', 'Active')->count();
+            $activeCalamitiesPests += PestOutbreak::query()
+                ->whereRaw('LOWER(status) = ?', ['active'])
+                ->count();
+        }
+        if (Schema::hasTable('pest_monitoring')) {
+            $activeCalamitiesPests += PestMonitoring::query()
+                ->where(function ($q) {
+                    $q->where('is_outbreak', true);
+                    if (Schema::hasColumn('pest_monitoring', 'area_damage_pct')) {
+                        $q->orWhere('area_damage_pct', '>=', 30);
+                    }
+                })
+                ->count();
         }
         if (Schema::hasTable('damage_assessments')) {
-            $activeCalamitiesPests += DamageAssessment::query()->where('status', 'Pending')->count();
+            // Barangay-encoded calamity logs are saved as Verified; technician field
+            // reports start as Pending. Both are still active until Claimed/Approved.
+            $activeCalamitiesPests += DamageAssessment::query()
+                ->whereIn('status', ['Pending', 'Verified'])
+                ->count();
         }
 
         $pendingSubsidyReleases = 0;
+        if (Schema::hasTable('tbl_subsidy_beneficiaries')) {
+            $pendingSubsidyReleases += DB::table('tbl_subsidy_beneficiaries')
+                ->where('status', 'Pending')
+                ->count();
+        }
         if (Schema::hasTable('distributions')) {
-            $pendingSubsidyReleases = Distribution::query()->where('status', 'pending_sync')->count();
+            $pendingSubsidyReleases += Distribution::query()->where('status', 'pending_sync')->count();
         }
 
         return [
@@ -84,6 +173,33 @@ class DashboardController extends Controller
             'active_calamities_pests' => $activeCalamitiesPests,
             'pending_subsidy_releases' => $pendingSubsidyReleases,
         ];
+    }
+
+    /**
+     * Prefer live planting ledgers; fall back to registered farm-plot area.
+     */
+    private function overviewActiveHectares(): float
+    {
+        if (Schema::hasTable('planting_logs')) {
+            $planted = (float) PlantingLog::query()
+                ->where(function ($q) {
+                    $q->whereNull('status')
+                        ->orWhereRaw(
+                            "LOWER(status) NOT IN ('not continued', 'harvested', 'completed', 'inactive')"
+                        );
+                })
+                ->sum('area_planted');
+
+            if ($planted > 0) {
+                return $planted;
+            }
+        }
+
+        if (Schema::hasTable('farm_plots')) {
+            return (float) FarmPlot::query()->sum('size_ha');
+        }
+
+        return 0.0;
     }
 
     private function overviewDiagnostic(): array
@@ -132,16 +248,40 @@ class DashboardController extends Controller
     }
 
     /**
-     * Farm plot count/area grouped by commodity, for the "Crop Distribution"
-     * doughnut chart (e.g. Rice vs Corn vs Other).
+     * Crop count/area grouped by commodity for the doughnut chart.
+     * Uses live planting logs when present, otherwise registered farm plots.
      */
     private function overviewCropDistribution(): array
     {
+        if (Schema::hasTable('planting_logs') && PlantingLog::query()->exists()) {
+            return DB::table('planting_logs')
+                ->where(function ($q) {
+                    $q->whereNull('status')
+                        ->orWhereRaw(
+                            "LOWER(status) NOT IN ('not continued', 'harvested', 'completed', 'inactive')"
+                        );
+                })
+                ->selectRaw("COALESCE(NULLIF(crop_type, ''), 'Other') as commodity")
+                ->selectRaw('COUNT(*) as total_plots')
+                ->selectRaw('SUM(area_planted) as total_area_ha')
+                ->groupByRaw('1')
+                ->orderByDesc('total_plots')
+                ->get()
+                ->map(fn ($row) => [
+                    'commodity' => $row->commodity,
+                    'total_plots' => (int) $row->total_plots,
+                    'total_area_ha' => round((float) $row->total_area_ha, 2),
+                ])
+                ->values()
+                ->all();
+        }
+
         if (! Schema::hasTable('farm_plots')) {
             return [];
         }
 
         return DB::table('farm_plots')
+            ->whereNull('deleted_at')
             ->selectRaw("COALESCE(NULLIF(commodity, ''), 'Other') as commodity")
             ->selectRaw('COUNT(*) as total_plots')
             ->selectRaw('SUM(size_ha) as total_area_ha')
@@ -158,28 +298,59 @@ class DashboardController extends Controller
     }
 
     /**
-     * Recent (90-day) subsidy distribution counts grouped by the recipient
-     * farmer's barangay, for the "Recent Subsidy Distributions" bar chart.
+     * Recent (90-day) subsidy counts by farmer barangay.
+     * Combines tbl_subsidy_beneficiaries (current) and distributions (legacy).
      */
     private function overviewDistributionsByBarangay(): array
     {
-        if (! Schema::hasTable('distributions') || ! Schema::hasTable('farmers')) {
+        if (! Schema::hasTable('farmers')) {
             return [];
         }
 
-        return DB::table('distributions')
-            ->join('farmers', 'distributions.farmer_id', '=', 'farmers.id')
-            ->where('distributions.created_at', '>=', Carbon::now()->subDays(90))
-            ->selectRaw("COALESCE(NULLIF(farmers.permanent_brgy, ''), 'Unspecified') as barangay")
-            ->selectRaw('COUNT(*) as total')
-            ->groupByRaw('1')
-            ->orderByDesc('total')
-            ->limit(8)
-            ->get()
-            ->map(fn ($row) => [
-                'barangay' => $row->barangay,
-                'total' => (int) $row->total,
+        $since = Carbon::now()->subDays(90);
+        $rows = collect();
+
+        if (Schema::hasTable('tbl_subsidy_beneficiaries')) {
+            $rows = $rows->concat(
+                DB::table('tbl_subsidy_beneficiaries')
+                    ->join('farmers', 'farmers.rsbsa_no', '=', 'tbl_subsidy_beneficiaries.farmer_rsbsa_no')
+                    ->whereNull('farmers.deleted_at')
+                    ->where('tbl_subsidy_beneficiaries.status', 'Claimed')
+                    ->where(function ($q) use ($since) {
+                        $q->where('tbl_subsidy_beneficiaries.claimed_at', '>=', $since)
+                            ->orWhere(function ($inner) use ($since) {
+                                $inner->whereNull('tbl_subsidy_beneficiaries.claimed_at')
+                                    ->where('tbl_subsidy_beneficiaries.updated_at', '>=', $since);
+                            });
+                    })
+                    ->selectRaw("COALESCE(NULLIF(farmers.permanent_brgy, ''), 'Unspecified') as barangay")
+                    ->selectRaw('COUNT(*) as total')
+                    ->groupByRaw('1')
+                    ->get()
+            );
+        }
+
+        if (Schema::hasTable('distributions')) {
+            $rows = $rows->concat(
+                DB::table('distributions')
+                    ->join('farmers', 'distributions.farmer_id', '=', 'farmers.id')
+                    ->whereNull('farmers.deleted_at')
+                    ->where('distributions.created_at', '>=', $since)
+                    ->selectRaw("COALESCE(NULLIF(farmers.permanent_brgy, ''), 'Unspecified') as barangay")
+                    ->selectRaw('COUNT(*) as total')
+                    ->groupByRaw('1')
+                    ->get()
+            );
+        }
+
+        return $rows
+            ->groupBy('barangay')
+            ->map(fn ($group, $barangay) => [
+                'barangay' => $barangay,
+                'total' => $group->sum(fn ($row) => (int) $row->total),
             ])
+            ->sortByDesc('total')
+            ->take(8)
             ->values()
             ->all();
     }
@@ -190,7 +361,12 @@ class DashboardController extends Controller
 
         if (Schema::hasTable('planting_logs')) {
             $rows = PlantingLog::query()
-                ->where('status', 'Active')
+                ->where(function ($q) {
+                    $q->whereNull('status')
+                        ->orWhereRaw(
+                            "LOWER(status) NOT IN ('not continued', 'harvested', 'completed', 'inactive')"
+                        );
+                })
                 ->select('crop_type')
                 ->selectRaw('SUM(area_planted) as total_area_ha')
                 ->selectRaw('COUNT(*) as field_count')
@@ -327,34 +503,80 @@ class DashboardController extends Controller
      */
     private function overviewPestAlerts(): array
     {
-        if (! Schema::hasTable('pest_outbreaks')) {
-            return [];
+        $alerts = [];
+
+        if (Schema::hasTable('pest_outbreaks')) {
+            $alerts = PestOutbreak::query()
+                ->whereRaw('LOWER(status) = ?', ['active'])
+                ->with('farmPlot:id,location_brgy,commodity')
+                ->orderByDesc('date_spotted')
+                ->limit(5)
+                ->get()
+                ->map(function ($p) {
+                    $brgy = optional($p->farmPlot)->location_brgy;
+                    $commodity = optional($p->farmPlot)->commodity;
+
+                    return [
+                        'type' => 'pest_outbreak',
+                        'barangay' => $brgy,
+                        'message' => sprintf(
+                            'Active %s outbreak (%s severity) in %s%s. Recommend field validation and targeted spray advisory.',
+                            $p->pest_name ?: 'pest',
+                            $p->severity ?: 'unspecified',
+                            $brgy ?: 'an unlisted barangay',
+                            $commodity ? " ({$commodity})" : ''
+                        ),
+                    ];
+                })
+                ->values()
+                ->all();
         }
 
-        return PestOutbreak::query()
-            ->where('status', 'Active')
-            ->with('farmPlot:id,location_brgy,commodity')
-            ->orderByDesc('date_spotted')
-            ->limit(5)
+        if (count($alerts) >= 5 || ! Schema::hasTable('pest_monitoring')) {
+            return $alerts;
+        }
+
+        $remaining = 5 - count($alerts);
+        $monitoringQuery = PestMonitoring::query()
+            ->with([
+                'farmer:id,permanent_brgy',
+                'farmPlot:id,location_brgy,commodity',
+            ])
+            ->where(function ($q) {
+                $q->where('is_outbreak', true);
+                if (Schema::hasColumn('pest_monitoring', 'area_damage_pct')) {
+                    $q->orWhere('area_damage_pct', '>=', 30);
+                }
+            });
+
+        if (Schema::hasColumn('pest_monitoring', 'date_of_inspection')) {
+            $monitoringQuery->orderByDesc('date_of_inspection');
+        }
+
+        $monitoring = $monitoringQuery
+            ->orderByDesc('created_at')
+            ->limit($remaining)
             ->get()
             ->map(function ($p) {
-                $brgy = optional($p->farmPlot)->location_brgy;
-                $commodity = optional($p->farmPlot)->commodity;
+                $brgy = optional($p->farmPlot)->location_brgy
+                    ?? optional($p->farmer)->permanent_brgy
+                    ?? $p->farm_location;
 
                 return [
                     'type' => 'pest_outbreak',
                     'barangay' => $brgy,
                     'message' => sprintf(
-                        'Active %s outbreak (%s severity) in %s%s. Recommend field validation and targeted spray advisory.',
+                        'Encoded %s report (%s severity) in %s%s. Recommend field validation and targeted spray advisory.',
                         $p->pest_name ?: 'pest',
                         $p->severity ?: 'unspecified',
                         $brgy ?: 'an unlisted barangay',
-                        $commodity ? " ({$commodity})" : ''
+                        $p->crop ? " ({$p->crop})" : ''
                     ),
                 ];
             })
-            ->values()
             ->all();
+
+        return array_values(array_merge($alerts, $monitoring));
     }
 
     private function assumedYieldKgPerHa(?string $cropType): float
@@ -408,10 +630,13 @@ class DashboardController extends Controller
         if ($wantDamage) {
             $damagePoints = DamageAssessment::with([
                 'farmer:id,first_name,surname,permanent_brgy',
-                'farmPlot:id,commodity,location_brgy',
+                'farmPlot:id,commodity,location_brgy,latitude,longitude',
             ])
-                ->whereNotNull('latitude')
-                ->whereNotNull('longitude')
+                ->where(function ($q) {
+                    $q->where(function ($geo) {
+                        $geo->whereNotNull('latitude')->whereNotNull('longitude');
+                    })->orWhereHas('farmPlot', fn ($fp) => $fp->whereNotNull('latitude')->whereNotNull('longitude'));
+                })
                 ->when($barangay, function ($q) use ($barangay) {
                     $q->where(function ($sub) use ($barangay) {
                         $sub->whereHas('farmPlot', fn ($fp) => $fp->where('location_brgy', $barangay))
@@ -420,41 +645,117 @@ class DashboardController extends Controller
                 })
                 ->when($commodity, fn ($q) => $q->whereHas('farmPlot', fn ($fp) => $fp->where('commodity', $commodity)))
                 ->get()
-                ->map(fn ($a) => [
-                    'id' => $a->id,
-                    'lat' => (float) $a->latitude,
-                    'lng' => (float) $a->longitude,
-                    'damage_percentage' => (float) $a->damage_percentage,
-                    'calamity_name' => $a->calamity_name,
-                    'status' => $a->status,
-                    'commodity' => optional($a->farmPlot)->commodity,
-                    'brgy' => optional($a->farmPlot)->location_brgy ?? optional($a->farmer)->permanent_brgy,
-                    'farmer_name' => trim((optional($a->farmer)->first_name ?? '') . ' ' . (optional($a->farmer)->surname ?? '')),
-                ])
+                ->map(function ($a) {
+                    $lat = $a->latitude ?? optional($a->farmPlot)->latitude;
+                    $lng = $a->longitude ?? optional($a->farmPlot)->longitude;
+                    if ($lat === null || $lng === null) {
+                        return null;
+                    }
+
+                    return [
+                        'id' => $a->id,
+                        'lat' => (float) $lat,
+                        'lng' => (float) $lng,
+                        'damage_percentage' => (float) $a->damage_percentage,
+                        'calamity_name' => $a->calamity_name,
+                        'status' => $a->status,
+                        'commodity' => optional($a->farmPlot)->commodity,
+                        'brgy' => optional($a->farmPlot)->location_brgy ?? optional($a->farmer)->permanent_brgy,
+                        'farmer_name' => trim((optional($a->farmer)->first_name ?? '') . ' ' . (optional($a->farmer)->surname ?? '')),
+                    ];
+                })
+                ->filter()
                 ->values();
         }
 
-        $pestOutbreaks = [];
+        $pestOutbreaks = collect();
         if ($wantPests) {
-            $pestOutbreaks = PestOutbreak::with([
-                'farmPlot:id,commodity,location_brgy',
-            ])
-                ->whereNotNull('latitude')
-                ->whereNotNull('longitude')
-                ->when($barangay, fn ($q) => $q->whereHas('farmPlot', fn ($fp) => $fp->where('location_brgy', $barangay)))
-                ->when($commodity, fn ($q) => $q->whereHas('farmPlot', fn ($fp) => $fp->where('commodity', $commodity)))
-                ->get()
-                ->map(fn ($p) => [
-                    'id' => $p->id,
-                    'lat' => (float) $p->latitude,
-                    'lng' => (float) $p->longitude,
-                    'pest_name' => $p->pest_name,
-                    'severity' => $p->severity,
-                    'status' => $p->status,
-                    'commodity' => optional($p->farmPlot)->commodity,
-                    'brgy' => optional($p->farmPlot)->location_brgy,
+            $pestOutbreaks = $pestOutbreaks->concat(
+                PestOutbreak::with([
+                    'farmPlot:id,commodity,location_brgy,latitude,longitude',
                 ])
-                ->values();
+                    ->where(function ($q) {
+                        $q->where(function ($geo) {
+                            $geo->whereNotNull('latitude')->whereNotNull('longitude');
+                        })->orWhereHas('farmPlot', fn ($fp) => $fp->whereNotNull('latitude')->whereNotNull('longitude'));
+                    })
+                    ->when($barangay, fn ($q) => $q->whereHas('farmPlot', fn ($fp) => $fp->where('location_brgy', $barangay)))
+                    ->when($commodity, fn ($q) => $q->whereHas('farmPlot', fn ($fp) => $fp->where('commodity', $commodity)))
+                    ->get()
+                    ->map(function ($p) {
+                        $lat = $p->latitude ?? optional($p->farmPlot)->latitude;
+                        $lng = $p->longitude ?? optional($p->farmPlot)->longitude;
+                        if ($lat === null || $lng === null) {
+                            return null;
+                        }
+
+                        return [
+                            'id' => $p->id,
+                            'lat' => (float) $lat,
+                            'lng' => (float) $lng,
+                            'pest_name' => $p->pest_name,
+                            'severity' => $p->severity,
+                            'status' => $p->status ?: 'Active',
+                            'commodity' => optional($p->farmPlot)->commodity,
+                            'brgy' => optional($p->farmPlot)->location_brgy,
+                        ];
+                    })
+                    ->filter()
+                    ->values()
+            );
+
+            if (Schema::hasTable('pest_monitoring')) {
+                $hasDamagePct = Schema::hasColumn('pest_monitoring', 'area_damage_pct');
+                $pestOutbreaks = $pestOutbreaks->concat(
+                    PestMonitoring::with([
+                        'farmer:id,permanent_brgy',
+                        'farmPlot:id,commodity,location_brgy,latitude,longitude',
+                    ])
+                        ->where(function ($q) {
+                            $q->where(function ($geo) {
+                                $geo->whereNotNull('latitude')->whereNotNull('longitude');
+                            })->orWhereHas('farmPlot', fn ($fp) => $fp->whereNotNull('latitude')->whereNotNull('longitude'));
+                        })
+                        ->when($barangay, function ($q) use ($barangay) {
+                            $q->where(function ($sub) use ($barangay) {
+                                $sub->whereHas('farmPlot', fn ($fp) => $fp->where('location_brgy', $barangay))
+                                    ->orWhereHas('farmer', fn ($f) => $f->where('permanent_brgy', $barangay));
+                            });
+                        })
+                        ->when($commodity, function ($q) use ($commodity) {
+                            $q->where(function ($sub) use ($commodity) {
+                                $sub->where('crop', $commodity)
+                                    ->orWhereHas('farmPlot', fn ($fp) => $fp->where('commodity', $commodity));
+                            });
+                        })
+                        ->get()
+                        ->map(function ($p) use ($hasDamagePct) {
+                            $lat = $p->latitude ?? optional($p->farmPlot)->latitude;
+                            $lng = $p->longitude ?? optional($p->farmPlot)->longitude;
+                            if ($lat === null || $lng === null) {
+                                return null;
+                            }
+
+                            $isActive = (bool) $p->is_outbreak
+                                || ($hasDamagePct && (float) $p->area_damage_pct >= 30);
+
+                            return [
+                                'id' => $p->id,
+                                'lat' => (float) $lat,
+                                'lng' => (float) $lng,
+                                'pest_name' => $p->pest_name,
+                                'severity' => $p->severity,
+                                'status' => $isActive ? 'Active' : 'Reported',
+                                'commodity' => $p->crop ?? optional($p->farmPlot)->commodity,
+                                'brgy' => optional($p->farmPlot)->location_brgy
+                                    ?? optional($p->farmer)->permanent_brgy
+                                    ?? $p->farm_location,
+                            ];
+                        })
+                        ->filter()
+                        ->values()
+                );
+            }
         }
 
         return response()->json([
@@ -462,7 +763,7 @@ class DashboardController extends Controller
             'data' => [
                 'farm_plots' => $farmPlots,
                 'damage_points' => $damagePoints,
-                'pest_outbreaks' => $pestOutbreaks,
+                'pest_outbreaks' => $pestOutbreaks->values(),
             ],
         ]);
     }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Farmer;
 use App\Models\SubsidyProgram;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,15 +13,22 @@ use Illuminate\Validation\Rule;
 class SubsidyController extends Controller
 {
     /**
-     * List subsidy programs with beneficiary counts for the admin console.
+     * List subsidy programs with beneficiary counts.
+     * Technicians only receive Active campaigns for field release.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $programs = SubsidyProgram::query()
+        $query = SubsidyProgram::query()
             ->withCount([
                 'beneficiaries',
                 'beneficiaries as claimed_count' => fn ($q) => $q->where('status', 'Claimed'),
-            ])
+            ]);
+
+        if ($request->user()?->role === 'technician') {
+            $query->where('status', 'Active');
+        }
+
+        $programs = $query
             ->orderByDesc('created_at')
             ->get()
             ->map(fn (SubsidyProgram $p) => [
@@ -349,6 +357,214 @@ class SubsidyController extends Controller
                 'program' => $result['program'],
             ],
         ]);
+    }
+
+    /**
+     * Field eligibility check: farmer must be on the Active masterlist.
+     */
+    public function verifyFarmer(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'farmer_id' => 'nullable|uuid|exists:farmers,id',
+            'rsbsa_no' => 'nullable|string|max:64',
+        ]);
+
+        if (empty($validated['farmer_id']) && empty($validated['rsbsa_no'])) {
+            return response()->json([
+                'status' => 'error',
+                'eligible' => false,
+                'message' => 'Provide a farmer ID or RSBSA number.',
+            ], 422);
+        }
+
+        $program = SubsidyProgram::query()->findOrFail($id);
+        if ($program->status !== 'Active') {
+            return response()->json([
+                'status' => 'error',
+                'eligible' => false,
+                'message' => 'This subsidy program is not active.',
+            ], 400);
+        }
+
+        $farmer = $this->resolveFarmer($validated['farmer_id'] ?? null, $validated['rsbsa_no'] ?? null);
+        if (! $farmer) {
+            return response()->json([
+                'status' => 'error',
+                'eligible' => false,
+                'message' => 'No registered farmer matches that ID / RSBSA.',
+            ], 404);
+        }
+
+        if (! $farmer->rsbsa_no) {
+            return response()->json([
+                'status' => 'error',
+                'eligible' => false,
+                'message' => 'This farmer has no RSBSA number and cannot claim subsidy.',
+            ], 400);
+        }
+
+        $beneficiary = DB::table('tbl_subsidy_beneficiaries')
+            ->where('program_id', $program->id)
+            ->where('farmer_rsbsa_no', $farmer->rsbsa_no)
+            ->first();
+
+        if (! $beneficiary) {
+            return response()->json([
+                'status' => 'error',
+                'eligible' => false,
+                'message' => 'This farmer is not on the masterlist for this program.',
+            ], 404);
+        }
+
+        if ($beneficiary->status === 'Claimed') {
+            return response()->json([
+                'status' => 'error',
+                'eligible' => false,
+                'message' => 'This farmer has already claimed their allocation for this program.',
+                'data' => [
+                    'claimed_at' => $beneficiary->claimed_at,
+                ],
+            ], 409);
+        }
+
+        if ($program->remaining_quantity < $beneficiary->calculated_allocation) {
+            return response()->json([
+                'status' => 'error',
+                'eligible' => false,
+                'message' => "Insufficient stock. Only {$program->remaining_quantity} {$program->unit_of_measurement} remaining, but this farmer is allocated {$beneficiary->calculated_allocation}.",
+            ], 409);
+        }
+
+        $primaryPlot = $farmer->farmPlots()->first();
+
+        return response()->json([
+            'status' => 'success',
+            'eligible' => true,
+            'message' => 'Verification passed. Farmer is eligible to claim.',
+            'data' => [
+                'farmer_id' => $farmer->id,
+                'program_id' => $program->id,
+                'beneficiary_id' => $beneficiary->id,
+                'farmer_name' => trim($farmer->surname.', '.$farmer->first_name.' '.$farmer->middle_name),
+                'mobile_number' => $farmer->mobile_number,
+                'item_released' => $program->program_name,
+                'unit' => $program->unit_of_measurement,
+                'total_farm_size' => (float) $farmer->farmPlots()->sum('size_ha'),
+                'eligible_size' => null,
+                'quantity' => (int) $beneficiary->calculated_allocation,
+                'inventory_remaining' => (int) $program->remaining_quantity,
+                'plot_lat' => $primaryPlot?->latitude,
+                'plot_long' => $primaryPlot?->longitude,
+                'source' => 'subsidy',
+            ],
+        ]);
+    }
+
+    /**
+     * Technician / admin field claim by farmer (RSBSA masterlist).
+     */
+    public function claimForFarmer(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'farmer_id' => 'nullable|uuid|exists:farmers,id',
+            'rsbsa_no' => 'nullable|string|max:64',
+            'beneficiary_id' => 'nullable|uuid',
+        ]);
+
+        if (empty($validated['farmer_id']) && empty($validated['rsbsa_no']) && empty($validated['beneficiary_id'])) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Provide a farmer ID, RSBSA number, or beneficiary ID.',
+            ], 422);
+        }
+
+        $farmer = $this->resolveFarmer($validated['farmer_id'] ?? null, $validated['rsbsa_no'] ?? null);
+
+        $result = DB::transaction(function () use ($id, $validated, $farmer) {
+            $program = SubsidyProgram::where('id', $id)->lockForUpdate()->firstOrFail();
+
+            if ($program->status !== 'Active') {
+                return ['error' => 'This subsidy program is not active.', 'code' => 400];
+            }
+
+            $beneficiaryQuery = DB::table('tbl_subsidy_beneficiaries')
+                ->where('program_id', $id);
+
+            if (! empty($validated['beneficiary_id'])) {
+                $beneficiaryQuery->where('id', $validated['beneficiary_id']);
+            } elseif ($farmer?->rsbsa_no) {
+                $beneficiaryQuery->where('farmer_rsbsa_no', $farmer->rsbsa_no);
+            } else {
+                return ['error' => 'Farmer is not on this program masterlist.', 'code' => 404];
+            }
+
+            $beneficiary = $beneficiaryQuery->lockForUpdate()->first();
+
+            if (! $beneficiary) {
+                return ['error' => 'This farmer is not on the masterlist for this program.', 'code' => 404];
+            }
+
+            if ($beneficiary->status === 'Claimed') {
+                return ['error' => 'This farmer has already claimed their allocation for this program.', 'code' => 409];
+            }
+
+            if ($program->remaining_quantity < $beneficiary->calculated_allocation) {
+                return [
+                    'error' => "Insufficient stock. Only {$program->remaining_quantity} {$program->unit_of_measurement} remaining, but this farmer is allocated {$beneficiary->calculated_allocation}.",
+                    'code' => 409,
+                ];
+            }
+
+            $program->remaining_quantity -= $beneficiary->calculated_allocation;
+            $program->save();
+
+            DB::table('tbl_subsidy_beneficiaries')
+                ->where('id', $beneficiary->id)
+                ->update(['status' => 'Claimed', 'claimed_at' => now(), 'updated_at' => now()]);
+
+            return [
+                'program' => $program->fresh(),
+                'beneficiary' => $beneficiary,
+                'farmer' => $farmer,
+            ];
+        });
+
+        if (isset($result['error'])) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $result['error'],
+            ], $result['code']);
+        }
+
+        $farmerName = $result['farmer']
+            ? trim($result['farmer']->surname.', '.$result['farmer']->first_name)
+            : ($result['beneficiary']->farmer_rsbsa_no ?? 'Farmer');
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Subsidy released and stock updated.',
+            'data' => [
+                'farmer_name' => $farmerName,
+                'quantity_dispensed' => (int) $result['beneficiary']->calculated_allocation,
+                'unit' => $result['program']->unit_of_measurement,
+                'inventory_remaining' => (int) $result['program']->remaining_quantity,
+                'program' => $result['program'],
+            ],
+        ]);
+    }
+
+    private function resolveFarmer(?string $farmerId, ?string $rsbsaNo): ?Farmer
+    {
+        if ($farmerId) {
+            return Farmer::with('farmPlots')->find($farmerId);
+        }
+
+        $rsbsa = trim((string) $rsbsaNo);
+        if ($rsbsa === '') {
+            return null;
+        }
+
+        return Farmer::with('farmPlots')->where('rsbsa_no', $rsbsa)->first();
     }
 
     /**

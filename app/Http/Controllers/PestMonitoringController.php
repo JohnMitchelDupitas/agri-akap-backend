@@ -20,6 +20,7 @@ class PestMonitoringController extends Controller
             'crop_type' => ['nullable', 'string'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
+            'pending_field' => ['nullable', 'boolean'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:500'],
         ]);
 
@@ -36,6 +37,12 @@ class PestMonitoringController extends Controller
             $query->whereHas('farmer', fn ($f) => $f->where('permanent_brgy', $user->assigned_barangay));
         } elseif (! empty($validated['barangay'])) {
             $query->whereHas('farmer', fn ($f) => $f->where('permanent_brgy', $validated['barangay']));
+        }
+
+        if ($request->boolean('pending_field')) {
+            $query->where(function ($q) {
+                $q->whereNull('latitude')->orWhereNull('photo_path');
+            });
         }
 
         if (! empty($validated['crop_type'])) {
@@ -66,6 +73,21 @@ class PestMonitoringController extends Controller
         ]);
     }
 
+    public function show(string $id): JsonResponse
+    {
+        $row = PestMonitoring::query()
+            ->with([
+                'farmer:id,rsbsa_no,surname,first_name,middle_name,ext_name,permanent_brgy,mobile_number',
+                'farmPlot:id,location_brgy,commodity,size_ha',
+            ])
+            ->findOrFail($id);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $row,
+        ]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -81,6 +103,8 @@ class PestMonitoringController extends Controller
             'date_of_inspection' => ['required', 'date'],
             'farm_location' => ['nullable', 'string', 'max:255'],
             'photo_base64' => ['nullable', 'string'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
         ]);
 
         $farmer = Farmer::findOrFail($validated['farmer_id']);
@@ -158,6 +182,8 @@ class PestMonitoringController extends Controller
             'severity' => $severity,
             'is_outbreak' => $pct >= 30,
             'photo_path' => $photoPath,
+            'latitude' => $validated['latitude'] ?? null,
+            'longitude' => $validated['longitude'] ?? null,
         ]);
 
         return response()->json([
