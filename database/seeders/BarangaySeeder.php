@@ -8,7 +8,8 @@ use Illuminate\Database\Seeder;
 
 /**
  * Seeds all 64 Echague barangays with approximate lat/lng offsets
- * around the municipal center (16.7118, 121.6603). Exact pins can be refined later.
+ * around the municipal center (16.7118, 121.6603).
+ * Precise pins are applied afterwards by BarangayCoordinateSeeder.
  */
 class BarangaySeeder extends Seeder
 {

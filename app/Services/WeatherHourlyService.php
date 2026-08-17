@@ -1,0 +1,194 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Barangay;
+use App\Models\WeatherHourly;
+use Carbon\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use RuntimeException;
+use Throwable;
+
+class WeatherHourlyService
+{
+    public const TIMEZONE = WeatherService::TIMEZONE;
+
+    /** Smaller than daily chunks — hourly payloads are ~48 timesteps × 4 vars per location. */
+    public const CHUNK_SIZE = 10;
+
+    protected const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
+
+    protected const HTTP_TIMEOUT_SECONDS = 120;
+
+    /**
+     * Bulk-fetch Open-Meteo hourly forecasts for every active barangay and upsert
+     * the next ~48 hours into tbl_weather_hourly (enough for a rolling 24h window).
+     *
+     * @return array{synced:int, barangays:int, chunks:int}
+     */
+    public function fetchAndCache(): array
+    {
+        $barangays = Barangay::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['name', 'latitude', 'longitude']);
+
+        if ($barangays->isEmpty()) {
+            throw new RuntimeException('No barangays found. Run: php artisan db:seed --class=BarangaySeeder');
+        }
+
+        $synced = 0;
+        $chunks = 0;
+
+        foreach ($barangays->chunk(self::CHUNK_SIZE) as $chunk) {
+            $chunks++;
+            $synced += $this->fetchChunk($chunk);
+        }
+
+        $this->pruneStaleWindow();
+
+        return [
+            'synced' => $synced,
+            'barangays' => $barangays->count(),
+            'chunks' => $chunks,
+        ];
+    }
+
+    /**
+     * @param  Collection<int, Barangay>  $chunk
+     */
+    protected function fetchChunk(Collection $chunk): int
+    {
+        $lats = $chunk->pluck('latitude')->map(fn ($v) => (string) $v)->implode(',');
+        $lngs = $chunk->pluck('longitude')->map(fn ($v) => (string) $v)->implode(',');
+
+        try {
+            $response = Http::timeout(self::HTTP_TIMEOUT_SECONDS)->acceptJson()->get(self::FORECAST_URL, [
+                'latitude' => $lats,
+                'longitude' => $lngs,
+                'hourly' => 'temperature_2m,precipitation_probability,windspeed_10m,weathercode',
+                'timezone' => self::TIMEZONE,
+                'forecast_days' => 2,
+            ]);
+        } catch (Throwable $e) {
+            Log::error('Open-Meteo hourly connection failed', [
+                'message' => $e->getMessage(),
+                'count' => $chunk->count(),
+            ]);
+            throw new RuntimeException('Unable to reach Open-Meteo for hourly forecast: '.$e->getMessage(), 0, $e);
+        }
+
+        if (! $response->successful()) {
+            Log::error('Open-Meteo hourly bulk fetch failed', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+                'count' => $chunk->count(),
+            ]);
+            throw new RuntimeException('Unable to fetch Open-Meteo hourly forecast (HTTP '.$response->status().').');
+        }
+
+        $payload = $response->json();
+        $locations = $this->normalizeLocations($payload);
+
+        if (count($locations) !== $chunk->count()) {
+            Log::warning('Open-Meteo hourly location count mismatch', [
+                'expected' => $chunk->count(),
+                'received' => count($locations),
+            ]);
+        }
+
+        $synced = 0;
+        $barangayList = $chunk->values();
+
+        foreach ($barangayList as $index => $barangay) {
+            $location = $locations[$index] ?? null;
+            if (! is_array($location)) {
+                continue;
+            }
+
+            $synced += $this->upsertLocationHourly($barangay->name, $location);
+        }
+
+        return $synced;
+    }
+
+    /**
+     * @param  array<string,mixed>|list<array<string,mixed>>  $payload
+     * @return list<array<string,mixed>>
+     */
+    protected function normalizeLocations(mixed $payload): array
+    {
+        if (! is_array($payload)) {
+            return [];
+        }
+
+        if (array_is_list($payload)) {
+            return $payload;
+        }
+
+        if (isset($payload['hourly'])) {
+            return [$payload];
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  array<string,mixed>  $location
+     */
+    protected function upsertLocationHourly(string $barangayName, array $location): int
+    {
+        $hourly = $location['hourly'] ?? null;
+        if (! is_array($hourly) || empty($hourly['time']) || ! is_array($hourly['time'])) {
+            return 0;
+        }
+
+        $temps = $hourly['temperature_2m'] ?? [];
+        $rain = $hourly['precipitation_probability'] ?? [];
+        $winds = $hourly['windspeed_10m'] ?? $hourly['wind_speed_10m'] ?? [];
+        $codes = $hourly['weathercode'] ?? $hourly['weather_code'] ?? [];
+
+        $synced = 0;
+
+        foreach ($hourly['time'] as $index => $timestamp) {
+            $forecastDatetime = Carbon::parse($timestamp, self::TIMEZONE);
+
+            WeatherHourly::updateOrCreate(
+                [
+                    'barangay_name' => $barangayName,
+                    'forecast_datetime' => $forecastDatetime,
+                ],
+                [
+                    'temperature' => isset($temps[$index]) ? (float) $temps[$index] : null,
+                    'precipitation_probability' => isset($rain[$index])
+                        ? (int) round((float) $rain[$index])
+                        : null,
+                    'wind_speed' => isset($winds[$index]) ? (float) $winds[$index] : null,
+                    'weather_code' => isset($codes[$index]) ? (int) $codes[$index] : null,
+                ]
+            );
+
+            $synced++;
+        }
+
+        return $synced;
+    }
+
+    /**
+     * Drop hours older than "now" and anything beyond the 48-hour fetch window.
+     */
+    protected function pruneStaleWindow(): void
+    {
+        $now = Carbon::now(self::TIMEZONE);
+        $windowEnd = $now->copy()->addDays(2)->endOfDay();
+
+        WeatherHourly::query()
+            ->where(function ($query) use ($now, $windowEnd) {
+                $query->where('forecast_datetime', '<', $now)
+                    ->orWhere('forecast_datetime', '>', $windowEnd);
+            })
+            ->delete();
+    }
+}

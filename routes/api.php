@@ -90,8 +90,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Climate Monitoring (hyper-local Open-Meteo cache + weather SMS advisories)
     Route::get('/weather/current', [WeatherController::class, 'current']);
+    Route::get('/weather/hourly/{barangay_name}', [WeatherController::class, 'hourly']);
+    Route::get('/weather/historical/{barangay_name}', [WeatherController::class, 'historical']);
     Route::get('/weather/heatmap', [WeatherController::class, 'heatmap']);
     Route::get('/weather/barangays', [WeatherController::class, 'barangays']);
+    Route::get('/weather/nearest', [WeatherController::class, 'nearest']);
+    Route::get('/weather/reverse', [WeatherController::class, 'reverse']);
     Route::get('/weather/advisories', [WeatherController::class, 'advisories'])
         ->middleware('role:admin');
     Route::post('/weather/advisories/send', [WeatherController::class, 'sendAdvisory'])

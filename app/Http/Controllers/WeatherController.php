@@ -5,11 +5,16 @@ namespace App\Http\Controllers;
 use App\Models\Barangay;
 use App\Models\SmsBroadcast;
 use App\Models\WeatherCache;
+use App\Models\WeatherHistorical;
+use App\Models\WeatherHourly;
 use App\Services\WeatherAlertService;
+use App\Services\WeatherHistoricalService;
+use App\Services\WeatherHourlyService;
 use App\Services\WeatherService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 
 class WeatherController extends Controller
 {
@@ -89,6 +94,140 @@ class WeatherController extends Controller
             ->pluck('name');
 
         return response()->json(['data' => $names]);
+    }
+
+    /**
+     * Reverse-geocode GPS to a real place name (works anywhere, not just Echague).
+     * Query: ?lat=16.71&lng=121.66
+     *
+     * Uses OpenStreetMap Nominatim. Optionally includes nearest Echague
+     * barangay pin when the technician is within ~8 km of a seeded pin.
+     */
+    public function reverse(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'lat' => ['required', 'numeric', 'between:-90,90'],
+            'lng' => ['required', 'numeric', 'between:-180,180'],
+        ]);
+
+        $lat = (float) $validated['lat'];
+        $lng = (float) $validated['lng'];
+
+        $place = $this->reverseGeocodeNominatim($lat, $lng);
+
+        if (! $place) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Could not resolve location name for these coordinates.',
+            ], 502);
+        }
+
+        $nearestEchague = $this->nearestEchagueBarangay($lat, $lng, 8.0);
+
+        return response()->json([
+            'data' => [
+                'place' => $place['place'],
+                'locality' => $place['locality'],
+                'municipality' => $place['municipality'],
+                'province' => $place['province'],
+                'country' => $place['country'],
+                'display_name' => $place['display_name'],
+                'in_echague' => $nearestEchague !== null
+                    || str_contains(mb_strtolower($place['municipality'] ?? ''), 'echague'),
+                'nearest_echague_barangay' => $nearestEchague,
+            ],
+        ]);
+    }
+
+    /**
+     * Resolve device GPS to the nearest Echague barangay pin.
+     * Query: ?lat=16.71&lng=121.66
+     */
+    public function nearest(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'lat' => ['required', 'numeric', 'between:-90,90'],
+            'lng' => ['required', 'numeric', 'between:-180,180'],
+        ]);
+
+        $lat = (float) $validated['lat'];
+        $lng = (float) $validated['lng'];
+        $nearest = $this->nearestEchagueBarangay($lat, $lng);
+
+        if (! $nearest) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No barangay pins found. Run barangay seeders first.',
+            ], 404);
+        }
+
+        return response()->json(['data' => $nearest]);
+    }
+
+    /**
+     * Next 6 hourly slots for a barangay (6-Hour Action Window).
+     * Path: /api/weather/hourly/{barangay_name}
+     */
+    public function hourly(string $barangay_name): JsonResponse
+    {
+        $barangay = trim(urldecode($barangay_name));
+        if ($barangay === '') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Barangay name is required.',
+            ], 422);
+        }
+
+        $now = Carbon::now(WeatherHourlyService::TIMEZONE);
+
+        $rows = WeatherHourly::query()
+            ->where('barangay_name', $barangay)
+            ->where('forecast_datetime', '>=', $now)
+            ->orderBy('forecast_datetime')
+            ->limit(6)
+            ->get()
+            ->map(fn (WeatherHourly $row) => $this->transformHourly($row))
+            ->values();
+
+        return response()->json([
+            'data' => [
+                'barangay' => $barangay,
+                'timezone' => WeatherHourlyService::TIMEZONE,
+                'generated_at' => $now->toIso8601String(),
+                'hours' => $rows,
+            ],
+        ]);
+    }
+
+    /**
+     * Last ~30 days of daily climate for a barangay (Chart.js historical series).
+     * Path: /api/weather/historical/{barangay_name}
+     * Ordered oldest → newest for chronological plotting.
+     */
+    public function historical(string $barangay_name): JsonResponse
+    {
+        $barangay = trim(urldecode($barangay_name));
+        if ($barangay === '') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Barangay name is required.',
+            ], 422);
+        }
+
+        $rows = WeatherHistorical::query()
+            ->where('barangay_name', $barangay)
+            ->orderBy('date')
+            ->get()
+            ->map(fn (WeatherHistorical $row) => $this->transformHistorical($row))
+            ->values();
+
+        return response()->json([
+            'data' => [
+                'barangay' => $barangay,
+                'timezone' => WeatherHistoricalService::TIMEZONE,
+                'days' => $rows,
+            ],
+        ]);
     }
 
     /**
@@ -175,6 +314,36 @@ class WeatherController extends Controller
         ];
     }
 
+    protected function transformHourly(WeatherHourly $row): array
+    {
+        $code = $row->weather_code;
+
+        return [
+            'id' => $row->id,
+            'barangay_name' => $row->barangay_name,
+            'forecast_datetime' => $row->forecast_datetime->timezone(WeatherHourlyService::TIMEZONE)->toIso8601String(),
+            'temperature' => $row->temperature !== null ? (float) $row->temperature : null,
+            'precipitation_probability' => $row->precipitation_probability,
+            'wind_speed' => $row->wind_speed !== null ? (float) $row->wind_speed : null,
+            'weather_code' => $code,
+            'status' => $this->statusFromCode($code),
+        ];
+    }
+
+    protected function transformHistorical(WeatherHistorical $row): array
+    {
+        return [
+            'id' => $row->id,
+            'barangay_name' => $row->barangay_name,
+            'date' => $row->date->toDateString(),
+            'precipitation_sum' => $row->precipitation_sum !== null ? (float) $row->precipitation_sum : null,
+            'temperature_max' => $row->temperature_max !== null ? (float) $row->temperature_max : null,
+            'et0_fao_evapotranspiration' => $row->et0_fao_evapotranspiration !== null
+                ? (float) $row->et0_fao_evapotranspiration
+                : null,
+        ];
+    }
+
     protected function statusFromCode(?int $code): string
     {
         if ($code === null) {
@@ -193,5 +362,123 @@ class WeatherController extends Controller
             $code >= 95 => 'Thunderstorm',
             default => 'Overcast',
         };
+    }
+
+    protected function reverseGeocodeNominatim(float $lat, float $lng): ?array
+    {
+        try {
+            $response = Http::withHeaders([
+                'User-Agent' => 'AGRI-AKAP/1.0 (Municipal Agriculture Office Echague; contact=mao@echague.local)',
+                'Accept-Language' => 'en',
+            ])->timeout(12)->get('https://nominatim.openstreetmap.org/reverse', [
+                'lat' => $lat,
+                'lon' => $lng,
+                'format' => 'json',
+                'addressdetails' => 1,
+                'zoom' => 16,
+            ]);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $json = $response->json();
+            $address = is_array($json['address'] ?? null) ? $json['address'] : [];
+
+            $locality = $this->firstAddressValue($address, [
+                'suburb', 'village', 'neighbourhood', 'quarter', 'hamlet',
+                'residential', 'city_district', 'district',
+            ]);
+            $municipality = $this->firstAddressValue($address, [
+                'city', 'town', 'municipality', 'city_district',
+            ]);
+            $province = $this->firstAddressValue($address, [
+                'state', 'province', 'region', 'county',
+            ]);
+            $country = $this->firstAddressValue($address, ['country']) ?? 'Philippines';
+
+            $place = $locality
+                ?? $municipality
+                ?? $province
+                ?? ($json['display_name'] ?? null);
+
+            if (! is_string($place) || trim($place) === '') {
+                return null;
+            }
+
+            return [
+                'place' => $place,
+                'locality' => $locality,
+                'municipality' => $municipality,
+                'province' => $province,
+                'country' => $country,
+                'display_name' => is_string($json['display_name'] ?? null)
+                    ? $json['display_name']
+                    : $place,
+            ];
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $address
+     * @param  array<int, string>  $keys
+     */
+    protected function firstAddressValue(array $address, array $keys): ?string
+    {
+        foreach ($keys as $key) {
+            $value = $address[$key] ?? null;
+            if (is_string($value) && trim($value) !== '') {
+                return trim($value);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{barangay:string,municipality:string,province:string,distance_km:float,latitude:float,longitude:float}|null
+     */
+    protected function nearestEchagueBarangay(float $lat, float $lng, ?float $maxKm = null): ?array
+    {
+        $nearest = null;
+        $bestKm = PHP_FLOAT_MAX;
+
+        foreach (Barangay::query()->where('is_active', true)->get(['name', 'latitude', 'longitude']) as $brgy) {
+            $km = $this->haversineKm($lat, $lng, (float) $brgy->latitude, (float) $brgy->longitude);
+            if ($km < $bestKm) {
+                $bestKm = $km;
+                $nearest = $brgy;
+            }
+        }
+
+        if (! $nearest) {
+            return null;
+        }
+
+        if ($maxKm !== null && $bestKm > $maxKm) {
+            return null;
+        }
+
+        return [
+            'barangay' => $nearest->name,
+            'municipality' => 'Echague',
+            'province' => 'Isabela',
+            'distance_km' => round($bestKm, 2),
+            'latitude' => (float) $nearest->latitude,
+            'longitude' => (float) $nearest->longitude,
+        ];
+    }
+
+    protected function haversineKm(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $earthKm = 6371.0;
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLng = deg2rad($lng2 - $lng1);
+        $a = sin($dLat / 2) ** 2
+            + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
+
+        return 2 * $earthKm * asin(min(1, sqrt($a)));
     }
 }

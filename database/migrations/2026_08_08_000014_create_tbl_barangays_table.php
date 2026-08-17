@@ -11,8 +11,8 @@ return new class extends Migration
         Schema::create('tbl_barangays', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('name')->unique();
-            $table->decimal('latitude', 10, 7);
-            $table->decimal('longitude', 10, 7);
+            $table->decimal('latitude', 10, 8);
+            $table->decimal('longitude', 11, 8);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });

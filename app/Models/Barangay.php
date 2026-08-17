@@ -20,8 +20,8 @@ class Barangay extends Model
     ];
 
     protected $casts = [
-        'latitude' => 'decimal:7',
-        'longitude' => 'decimal:7',
+        'latitude' => 'decimal:8',
+        'longitude' => 'decimal:8',
         'is_active' => 'boolean',
     ];
 }
