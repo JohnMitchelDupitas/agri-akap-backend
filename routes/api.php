@@ -6,6 +6,7 @@ use App\Http\Controllers\FarmPlotController;
 use App\Http\Controllers\ProgramController;
 use App\Http\Controllers\DistributionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\BrgyDashboardController;
 use App\Http\Controllers\BroadcastController;
 use App\Http\Controllers\IntelligenceController;
 use App\Http\Controllers\DamageAssessmentController;
@@ -16,6 +17,8 @@ use App\Http\Controllers\WeatherController;
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\SubsidyController;
 use App\Http\Controllers\PlantingLogController;
+use App\Http\Controllers\StandingCropLogController;
+use App\Http\Controllers\HarvestLogController;
 use App\Http\Controllers\PestMonitoringController;
 use App\Http\Controllers\ExecutiveReportingController;
 use App\Http\Controllers\ReportsController;
@@ -81,9 +84,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/subsidies/{id}/beneficiaries/{beneficiaryId}/claim', [SubsidyController::class, 'claimBeneficiary'])
         ->middleware('role:admin,technician');
 
-    // Distribution / Claiming
-    Route::post('/distributions/verify', [DistributionController::class, 'verify']);
-    Route::post('/distributions/claim', [DistributionController::class, 'processClaim']);
+    // Distribution / Claiming (field dispense + admin fallback)
+    Route::post('/distributions/verify', [DistributionController::class, 'verify'])
+        ->middleware('role:admin,technician');
+    Route::post('/distributions/claim', [DistributionController::class, 'processClaim'])
+        ->middleware('role:admin,technician');
 
     // Offline Bulk Sync (Dexie → Laravel)
     Route::post('/sync/bulk', [SyncController::class, 'bulkSync']);
@@ -106,6 +111,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/overview', [DashboardController::class, 'overview'])
         ->middleware('role:admin');
     Route::get('/dashboard/barangay', [DashboardController::class, 'barangayOverview'])
+        ->middleware('role:barangay_official,admin');
+
+    // Barangay Localized Command Center (4-tier + Weather Hub)
+    Route::get('/brgy/dashboard', [BrgyDashboardController::class, 'index'])
         ->middleware('role:barangay_official,admin');
     Route::get('/dashboard/map-data', [DashboardController::class, 'mapData'])
         ->middleware('role:admin,technician');
@@ -159,7 +168,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Disaster Damage Assessment Workflow
     Route::get('/damage-assessments', [DamageAssessmentController::class, 'index']);
-    Route::post('/damage-assessments', [DamageAssessmentController::class, 'store']);
+    Route::post('/damage-assessments', [DamageAssessmentController::class, 'store'])
+        ->middleware('role:barangay_official,technician,admin');
     Route::get('/damage-assessments/{id}', [DamageAssessmentController::class, 'show']);
     Route::patch('/damage-assessments/{id}/field-validate', [DamageAssessmentController::class, 'fieldValidate'])
         ->middleware('role:technician,admin');
@@ -168,9 +178,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/damage-assessments/{id}/decide', [DamageAssessmentController::class, 'decide'])
         ->middleware('role:admin');
 
-    // Barangay / field encoding ledgers (planting + pest)
+    // Barangay / field encoding ledgers (planting + standing + harvest + pest)
     Route::get('/planting-logs', [PlantingLogController::class, 'index']);
     Route::post('/planting-logs', [PlantingLogController::class, 'store'])
+        ->middleware('role:barangay_official,technician,admin');
+    Route::get('/standing-crop-logs', [StandingCropLogController::class, 'index']);
+    Route::post('/standing-crop-logs', [StandingCropLogController::class, 'store'])
+        ->middleware('role:barangay_official,technician,admin');
+    Route::get('/harvest-logs', [HarvestLogController::class, 'index']);
+    Route::post('/harvest-logs', [HarvestLogController::class, 'store'])
         ->middleware('role:barangay_official,technician,admin');
     Route::get('/pest-monitoring', [PestMonitoringController::class, 'index']);
     Route::get('/pest-monitoring/{id}', [PestMonitoringController::class, 'show']);

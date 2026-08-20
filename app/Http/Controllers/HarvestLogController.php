@@ -4,12 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Farmer;
 use App\Models\FarmPlot;
-use App\Models\PlantingLog;
+use App\Models\HarvestLog;
 use App\Traits\ResolvesEncodingBarangay;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class PlantingLogController extends Controller
+class HarvestLogController extends Controller
 {
     use ResolvesEncodingBarangay;
     public function index(Request $request): JsonResponse
@@ -22,12 +22,13 @@ class PlantingLogController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:500'],
         ]);
 
-        $query = PlantingLog::query()
+        $query = HarvestLog::query()
             ->with([
                 'farmer:id,rsbsa_no,surname,first_name,middle_name,ext_name,birthdate,permanent_house_no,permanent_street,permanent_brgy,permanent_city,permanent_province',
                 'farmPlot:id,location_brgy,commodity,size_ha',
             ])
-            ->orderByDesc('date_planted');
+            ->orderByDesc('date_harvested')
+            ->orderByDesc('created_at');
 
         $this->applyEncodingBarangayScope($query, $request);
 
@@ -35,10 +36,10 @@ class PlantingLogController extends Controller
             $query->where('crop_type', $validated['crop_type']);
         }
         if (! empty($validated['date_from'])) {
-            $query->whereDate('date_planted', '>=', $validated['date_from']);
+            $query->whereDate('date_harvested', '>=', $validated['date_from']);
         }
         if (! empty($validated['date_to'])) {
-            $query->whereDate('date_planted', '<=', $validated['date_to']);
+            $query->whereDate('date_harvested', '<=', $validated['date_to']);
         }
 
         return response()->json([
@@ -54,13 +55,12 @@ class PlantingLogController extends Controller
             'farmer_id' => ['required', 'uuid', 'exists:farmers,id'],
             'farm_plot_id' => ['nullable', 'uuid', 'exists:farm_plots,id'],
             'crop_type' => ['required', 'string', 'max:64'],
-            'variety' => ['nullable', 'string', 'max:128'],
-            'area_planted' => ['required', 'numeric', 'min:0'],
-            'date_planted' => ['required', 'date'],
-            'status' => ['nullable', 'string', 'max:64'],
-            'water_source' => ['nullable', 'string', 'max:64'],
+            'variety' => ['required', 'string', 'max:128'],
+            'area_harvested' => ['required', 'numeric', 'min:0'],
+            'total_yield' => ['required', 'numeric', 'min:0'],
+            'yield_unit' => ['nullable', 'string', 'max:64'],
+            'date_harvested' => ['required', 'date'],
             'farm_location' => ['nullable', 'string', 'max:255'],
-            'remarks' => ['nullable', 'string', 'max:500'],
             'barangay_name' => ['nullable', 'string', 'max:255'],
         ]);
 
@@ -81,55 +81,38 @@ class PlantingLogController extends Controller
                     'message' => 'Selected farm plot does not belong to this farmer.',
                 ], 422);
             }
-            if (strcasecmp((string) $plot->commodity, (string) $validated['crop_type']) !== 0) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => "Selected plot is {$plot->commodity}, but this form is for {$validated['crop_type']} only.",
-                ], 422);
-            }
-        } else {
-            $hasCropPlot = FarmPlot::where('farmer_id', $farmer->id)
-                ->whereRaw('LOWER(commodity) = ?', [strtolower($validated['crop_type'])])
-                ->exists();
-            if (! $hasCropPlot) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => "This farmer has no {$validated['crop_type']} farm plot. Switch crop type or pick another farmer.",
-                ], 422);
-            }
         }
 
         if (! empty($validated['id'])) {
-            $existing = PlantingLog::find($validated['id']);
+            $existing = HarvestLog::find($validated['id']);
             if ($existing) {
                 return response()->json([
                     'status' => 'success',
-                    'message' => 'Planting log already recorded.',
+                    'message' => 'Harvest already recorded.',
                     'data' => $existing->load('farmer', 'farmPlot'),
                     'duplicate' => true,
                 ]);
             }
         }
 
-        $log = PlantingLog::create([
+        $log = HarvestLog::create([
             'id' => $validated['id'] ?? null,
             'client_id' => $validated['id'] ?? null,
             'farmer_id' => $validated['farmer_id'],
             'farm_plot_id' => $validated['farm_plot_id'] ?? null,
             'technician_id' => $user->id,
             'crop_type' => $validated['crop_type'],
-            'variety' => $validated['variety'] ?? 'Unspecified',
-            'area_planted' => $validated['area_planted'],
-            'date_planted' => $validated['date_planted'],
-            'status' => $validated['status'] ?? 'Active',
-            'water_source' => $validated['water_source'] ?? null,
+            'variety' => $validated['variety'],
+            'area_harvested' => $validated['area_harvested'],
+            'total_yield' => $validated['total_yield'],
+            'yield_unit' => $validated['yield_unit'] ?? 'Metric Tons',
+            'date_harvested' => $validated['date_harvested'],
             'farm_location' => $validated['farm_location'] ?? $encodingBarangay ?? $farmer->permanent_brgy,
-            'remarks' => $validated['remarks'] ?? null,
         ]);
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Planting log saved.',
+            'message' => 'Harvest record saved.',
             'data' => $log->load('farmer', 'farmPlot'),
         ], 201);
     }

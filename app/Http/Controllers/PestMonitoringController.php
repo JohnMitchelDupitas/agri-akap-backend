@@ -6,12 +6,14 @@ use App\Models\Farmer;
 use App\Models\FarmPlot;
 use App\Models\PestMonitoring;
 use App\Traits\DecodesBase64Image;
+use App\Traits\ResolvesEncodingBarangay;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class PestMonitoringController extends Controller
 {
     use DecodesBase64Image;
+    use ResolvesEncodingBarangay;
 
     public function index(Request $request): JsonResponse
     {
@@ -24,7 +26,6 @@ class PestMonitoringController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:500'],
         ]);
 
-        $user = $request->user();
         $query = PestMonitoring::query()
             ->with([
                 'farmer:id,rsbsa_no,surname,first_name,middle_name,ext_name,birthdate,permanent_house_no,permanent_street,permanent_brgy,permanent_city,permanent_province',
@@ -33,11 +34,7 @@ class PestMonitoringController extends Controller
             ->orderByDesc('date_of_inspection')
             ->orderByDesc('created_at');
 
-        if ($user->role === 'barangay_official' && $user->assigned_barangay) {
-            $query->whereHas('farmer', fn ($f) => $f->where('permanent_brgy', $user->assigned_barangay));
-        } elseif (! empty($validated['barangay'])) {
-            $query->whereHas('farmer', fn ($f) => $f->where('permanent_brgy', $validated['barangay']));
-        }
+        $this->applyEncodingBarangayScope($query, $request);
 
         if ($request->boolean('pending_field')) {
             $query->where(function ($q) {
@@ -105,18 +102,17 @@ class PestMonitoringController extends Controller
             'photo_base64' => ['nullable', 'string'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'barangay_name' => ['nullable', 'string', 'max:255'],
         ]);
 
         $farmer = Farmer::findOrFail($validated['farmer_id']);
         $user = $request->user();
 
-        if ($user->role === 'barangay_official' && $user->assigned_barangay
-            && $farmer->permanent_brgy !== $user->assigned_barangay) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'You can only encode farmers from your assigned barangay.',
-            ], 403);
+        $barangayResult = $this->resolveEncodingBarangay($request, $farmer);
+        if ($barangayResult instanceof JsonResponse) {
+            return $barangayResult;
         }
+        $encodingBarangay = $barangayResult['barangay'];
 
         if (! empty($validated['farm_plot_id'])) {
             $plot = FarmPlot::findOrFail($validated['farm_plot_id']);
@@ -175,7 +171,7 @@ class PestMonitoringController extends Controller
             'area_planted' => $validated['area_planted'],
             'days_after_planting' => $validated['days_after_planting'],
             'area_damage_pct' => $pct,
-            'farm_location' => $validated['farm_location'] ?? $farmer->permanent_brgy,
+            'farm_location' => $validated['farm_location'] ?? $encodingBarangay ?? $farmer->permanent_brgy,
             'date_of_inspection' => $validated['date_of_inspection'],
             'pest_name' => $validated['damage_by'],
             'incidence' => (int) round($pct),

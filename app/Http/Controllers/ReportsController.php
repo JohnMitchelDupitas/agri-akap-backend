@@ -341,6 +341,7 @@ class ReportsController extends Controller
             $farmer = $row->farmer;
             $name   = trim(($farmer?->first_name ?? '') . ' ' . ($farmer?->surname ?? ''));
             $brgy   = $farmer?->permanent_brgy ?? $row->farmPlot?->location_brgy ?? '';
+            $effectiveStatus = $this->effectiveDamageStatus($row);
 
             return [
                 'date_reported'  => optional($row->date_of_calamity)->format('Y-m-d'),
@@ -351,7 +352,7 @@ class ReportsController extends Controller
                 'calamity_type'  => $row->calamity_type ?? $row->calamity_name ?? '',
                 'area_affected'  => (float) ($row->area_destroyed_ha ?? 0),
                 'damage_value'   => (float) ($row->estimated_value_lost ?? 0),
-                'status'         => $row->status ?? 'Pending',
+                'status'         => $effectiveStatus,
                 'photo_url'      => $row->photo_evidence_path
                     ? asset('storage/' . ltrim($row->photo_evidence_path, '/'))
                     : null,
@@ -362,5 +363,20 @@ class ReportsController extends Controller
             'status' => 'success',
             'data'   => ['rows' => $rows],
         ]);
+    }
+
+    /**
+     * Technician field validation requires geotagged photo evidence.
+     * Legacy barangay-encoded rows may still be marked Verified in DB without it.
+     */
+    private function effectiveDamageStatus(DamageAssessment $row): string
+    {
+        $status = $row->status ?? 'Pending';
+
+        if ($status === 'Verified' && (empty($row->photo_evidence_path) || $row->latitude === null)) {
+            return 'Pending';
+        }
+
+        return $status;
     }
 }
