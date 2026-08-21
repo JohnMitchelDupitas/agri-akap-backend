@@ -45,6 +45,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/farmers/{id}', [FarmerController::class, 'show']);
     Route::post('/farmers/{id}/photo', [FarmerController::class, 'uploadPhoto'])
         ->middleware('role:admin');
+    Route::post('/farmers/{id}/return-for-correction', [FarmerController::class, 'returnForCorrection'])
+        ->middleware('role:admin');
 
     // Farm Plots
     Route::get('/farm-plots', [FarmPlotController::class, 'index']);

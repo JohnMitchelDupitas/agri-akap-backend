@@ -87,6 +87,7 @@ class StoreFarmerRequest extends FormRequest
 
             // ── Part 3: Farm Plots (at least one required) ─────────────────
             'plots' => 'required|array|min:1',
+            'plots.*.parcel_name' => 'nullable|string|max:100',
             'plots.*.location_brgy' => 'required|string|max:100',
             'plots.*.location_city' => 'required|string|max:100',
             'plots.*.location_province' => 'required|string|max:100',
@@ -105,6 +106,8 @@ class StoreFarmerRequest extends FormRequest
             'plots.*.land_owner_rsbsa_no' => 'required_if:plots.*.ownership_type,Tenant|nullable|string|max:100',
             'plots.*.proof_of_ownership_document' => 'required|string|max:100',
             'plots.*.commodity' => 'required|string|max:100',
+            'plots.*.planting_start_month' => 'nullable|string|max:20',
+            'plots.*.planting_end_month' => 'nullable|string|max:20',
             'plots.*.size_ha' => 'required|numeric|min:0.01',
             'plots.*.no_of_heads_or_trees' => 'nullable|integer|min:0',
             // Official DA farm-type classifications.

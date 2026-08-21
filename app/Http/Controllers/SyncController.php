@@ -5,8 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\DamageAssessment;
 use App\Models\FarmPlot;
 use App\Models\Farmer;
+use App\Models\GeoTag;
+use App\Models\GeoTagRefusal;
 use App\Models\PestMonitoring;
 use App\Models\PlantingLog;
+use App\Services\PolygonIntegrityService;
+use App\Services\SmsService;
 use App\Traits\DecodesBase64Image;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,8 +24,11 @@ class SyncController extends Controller
 {
     use DecodesBase64Image;
 
-    public function __construct(private DistributionController $distributions)
-    {
+    public function __construct(
+        private DistributionController $distributions,
+        private SmsService $sms,
+        private PolygonIntegrityService $polygonIntegrity,
+    ) {
     }
 
     /**
@@ -42,7 +49,9 @@ class SyncController extends Controller
      *   "assessments": [...],
      *   "planting_logs": [...],
      *   "pest_reports": [...],
-     *   "farm_profiles": [...]
+     *   "farm_profiles": [...],
+     *   "geo_tags": [...],
+     *   "geo_tag_refusals": [...]
      * }
      */
     public function bulkUpload(Request $request): JsonResponse
@@ -57,6 +66,8 @@ class SyncController extends Controller
             'pest_reports' => [],
             'farm_profiles' => [],
             'field_distributions' => [],
+            'geo_tags' => [],
+            'geo_tag_refusals' => [],
         ];
 
         foreach ((array) $request->input('distributions', []) as $item) {
@@ -70,7 +81,9 @@ class SyncController extends Controller
         $hasOfflineBatch = $request->has('planting_logs')
             || $request->has('pest_reports')
             || $request->has('farm_profiles')
-            || $request->has('field_distributions');
+            || $request->has('field_distributions')
+            || $request->has('geo_tags')
+            || $request->has('geo_tag_refusals');
 
         if ($hasOfflineBatch) {
             try {
@@ -100,12 +113,26 @@ class SyncController extends Controller
                     }
                 }
 
+                if ($request->has('geo_tags')) {
+                    foreach ((array) $request->input('geo_tags', []) as $item) {
+                        $results['geo_tags'][] = $this->syncGeoTag($item, $technicianId, $deviceId);
+                    }
+                }
+
+                if ($request->has('geo_tag_refusals')) {
+                    foreach ((array) $request->input('geo_tag_refusals', []) as $item) {
+                        $results['geo_tag_refusals'][] = $this->syncGeoTagRefusal($item, $technicianId, $deviceId);
+                    }
+                }
+
                 // Fail the batch if any offline item failed validation/insert.
                 $offlineFailed = collect([
                     ...$results['planting_logs'],
                     ...$results['pest_reports'],
                     ...$results['farm_profiles'],
                     ...$results['field_distributions'],
+                    ...$results['geo_tags'],
+                    ...$results['geo_tag_refusals'],
                 ])->contains(fn ($r) => ($r['outcome'] ?? '') === 'failed');
 
                 if ($offlineFailed) {
@@ -395,6 +422,356 @@ class SyncController extends Controller
         );
 
         return $this->itemResult($clientId, 'synced', 'Farm plot profile updated.');
+    }
+
+    /**
+     * DA-RSBSA Georeferencing (RCM Protocol) sync: persists a full geo-tag
+     * audit trail, and when the capture is a farm boundary polygon, creates
+     * the corresponding `farm_plots` record (gross area minus the declared
+     * non-productive/infrastructure deduction) and fires the Semaphore SMS
+     * georeferencing receipt.
+     */
+    private function syncGeoTag(array $item, ?string $technicianId, ?string $deviceId): array
+    {
+        $clientId = $item['client_id'] ?? ($item['id'] ?? null);
+
+        if ($clientId && GeoTag::where('client_id', $clientId)->exists()) {
+            return $this->itemResult($clientId, 'duplicate', 'Geo-tag already synced.');
+        }
+
+        $validator = Validator::make($item, [
+            'geometry_type' => ['required', Rule::in(['polygon', 'marker'])],
+            'coordinates' => 'required',
+            'crop_planted' => 'nullable|string|max:100',
+            'incident_type' => ['nullable', Rule::in(['none', 'pest', 'calamity'])],
+            'non_productive_area_sqm' => 'nullable|numeric|min:0',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->itemResult($clientId, 'failed', $validator->errors()->first());
+        }
+
+        $geometryType = $item['geometry_type'];
+        $points = $this->parseGeoTagPoints($item['coordinates'] ?? null, $geometryType);
+
+        if ($points === null || ($geometryType === 'polygon' && count($points) < 3)) {
+            return $this->itemResult($clientId, 'failed', 'Invalid geo-tag coordinates payload.');
+        }
+
+        // ── DA Polygon Integrity Checks (polygon boundaries only) ──────────────
+        if ($geometryType === 'polygon') {
+            // 1. Start/End Gap Rule — walk start and end must be ≤ 10 m apart.
+            if ($this->polygonIntegrity->hasUnclosedGap($points)) {
+                $first = $points[0];
+                $last  = $points[count($points) - 1];
+                $gapM  = round($this->polygonIntegrity->haversineMeters(
+                    $first['lat'], $first['lng'], $last['lat'], $last['lng'],
+                ));
+
+                return $this->itemResult(
+                    $clientId,
+                    'failed',
+                    "Validation Failed: Start–End gap is {$gapM} m. DA guidelines require ≤ "
+                    . PolygonIntegrityService::GAP_LIMIT_METERS . ' m. Walk back to the starting stake.',
+                );
+            }
+
+            // 2. Spatial Overlap Rule — new boundary must not intersect any existing plot.
+            $collision = $this->polygonIntegrity->findOverlappingPlot($points);
+            if ($collision !== null) {
+                return $this->itemResult(
+                    $clientId,
+                    'failed',
+                    'Validation Failed: Polygon overlaps with an existing farm boundary. Please adjust coordinates.',
+                );
+            }
+        }
+
+        $farmerId = $this->resolveFarmerId($item['farmer_id'] ?? null, $item['rsbsa_no'] ?? null);
+
+        $photoPath = null;
+        if (! empty($item['photo_base64'])) {
+            $photoPath = $this->storeBase64Image($item['photo_base64'], 'geo-tags');
+        }
+
+        $farmerSignaturePath = null;
+        if (! empty($item['farmer_signature_base64'])) {
+            $farmerSignaturePath = $this->storeBase64Image($item['farmer_signature_base64'], 'geo-tags/signatures');
+        }
+
+        $aewSignaturePath = null;
+        if (! empty($item['aew_signature_base64'])) {
+            $aewSignaturePath = $this->storeBase64Image($item['aew_signature_base64'], 'geo-tags/signatures');
+        }
+
+        $nonProductiveSqm = (float) ($item['non_productive_area_sqm'] ?? 0);
+        $grossAreaSqm = $geometryType === 'polygon' ? $this->polygonAreaSqm($points) : null;
+        $finalAreaSqm = $grossAreaSqm !== null ? max(0.0, $grossAreaSqm - $nonProductiveSqm) : null;
+        $finalAreaHa = $finalAreaSqm !== null ? round($finalAreaSqm / 10000, 4) : null;
+        $hasDiscrepancy = (bool) ($item['has_discrepancy'] ?? false);
+
+        try {
+            $geoTag = GeoTag::create([
+                'client_id' => $clientId,
+                'farmer_id' => $farmerId,
+                'rsbsa_no' => $item['rsbsa_no'] ?? null,
+                'technician_id' => $technicianId,
+                'device_id' => $item['device_id'] ?? $deviceId,
+                'geometry_type' => $geometryType,
+                'coordinates' => $points,
+                'crop_planted' => $item['crop_planted'] ?? null,
+                'crop_variety' => $item['crop_variety'] ?? null,
+                'planting_start_month' => $item['planting_start_month'] ?? null,
+                'planting_end_month' => $item['planting_end_month'] ?? null,
+                'incident_type' => $item['incident_type'] ?? 'none',
+                'observations' => $item['observations'] ?? null,
+                'photo_path' => $photoPath,
+                'farmer_signature_path' => $farmerSignaturePath,
+                'aew_signature_path' => $aewSignaturePath,
+                'accuracy_m' => $item['accuracy_m'] ?? null,
+                'gross_area_sqm' => $grossAreaSqm,
+                'non_productive_area_sqm' => $nonProductiveSqm,
+                'final_area_sqm' => $finalAreaSqm,
+                'final_area_ha' => $finalAreaHa,
+                'has_discrepancy' => $hasDiscrepancy,
+            ]);
+
+            if ($geometryType === 'polygon' && $farmerId && $finalAreaHa !== null && $finalAreaHa > 0) {
+                $farmPlot = $this->createFarmPlotFromBoundary(
+                    $farmerId,
+                    $points,
+                    $finalAreaHa,
+                    $nonProductiveSqm,
+                    $hasDiscrepancy,
+                    $item,
+                );
+
+                $geoTag->farm_plot_id = $farmPlot->id;
+                $geoTag->save();
+
+                if ((bool) ($item['notify_sms'] ?? true)) {
+                    $this->sendGeoreferencingReceipt($farmPlot, $geoTag);
+                }
+            }
+
+            return $this->itemResult($clientId ?? $geoTag->id, 'synced', 'Geo-tag saved.');
+        } catch (\Throwable $e) {
+            Log::error('Geo-tag sync failed: '.$e->getMessage());
+
+            return $this->itemResult($clientId, 'failed', 'Server error while saving geo-tag.');
+        }
+    }
+
+    /**
+     * DA "3-Attempt Rule": persists a farmer's refusal to consent to
+     * georeferencing. Three logged attempts flag the record for the RSBSA
+     * exclusion protocol during MAO review.
+     */
+    private function syncGeoTagRefusal(array $item, ?string $technicianId, ?string $deviceId): array
+    {
+        $clientId = $item['client_id'] ?? ($item['id'] ?? null);
+
+        if ($clientId && GeoTagRefusal::where('client_id', $clientId)->exists()) {
+            return $this->itemResult($clientId, 'duplicate', 'Refusal already logged.');
+        }
+
+        $validator = Validator::make($item, [
+            'attempt_number' => 'required|integer|min:1|max:3',
+            'reason' => 'required|string|max:2000',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->itemResult($clientId, 'failed', $validator->errors()->first());
+        }
+
+        $farmerId = $this->resolveFarmerId($item['farmer_id'] ?? null, $item['rsbsa_no'] ?? null);
+
+        try {
+            $refusal = GeoTagRefusal::create([
+                'client_id' => $clientId,
+                'farmer_id' => $farmerId,
+                'rsbsa_no' => $item['rsbsa_no'] ?? null,
+                'technician_id' => $technicianId,
+                'device_id' => $item['device_id'] ?? $deviceId,
+                'attempt_number' => (int) $item['attempt_number'],
+                'reason' => $item['reason'],
+            ]);
+
+            return $this->itemResult($clientId ?? $refusal->id, 'synced', 'Refusal logged.');
+        } catch (\Throwable $e) {
+            Log::error('Geo-tag refusal sync failed: '.$e->getMessage());
+
+            return $this->itemResult($clientId, 'failed', 'Server error while logging refusal.');
+        }
+    }
+
+    /**
+     * Creates the RSBSA farm boundary plot from a completed polygon walk.
+     * `size_ha`/`total_parcel_area_ha` reflect the *final verified area*
+     * (gross area minus the non-productive/infrastructure deduction).
+     */
+    private function createFarmPlotFromBoundary(
+        string $farmerId,
+        array $points,
+        float $areaHa,
+        float $nonProductiveSqm,
+        bool $hasDiscrepancy,
+        array $item,
+    ): FarmPlot {
+        $centroid = $this->polygonCentroid($points);
+        $farmer = Farmer::find($farmerId);
+        $id = (string) Str::uuid();
+
+        DB::table('farm_plots')->insert([
+            'id' => $id,
+            'farmer_id' => $farmerId,
+            'location_brgy' => $item['location_brgy'] ?? ($farmer->permanent_brgy ?? 'Unspecified'),
+            'location_city' => $item['location_city'] ?? 'Echague',
+            'location_province' => $item['location_province'] ?? 'Isabela',
+            'latitude' => $centroid['lat'],
+            'longitude' => $centroid['lng'],
+            'total_parcel_area_ha' => $areaHa,
+            'is_ancestral_domain' => false,
+            'is_agrarian_reform_beneficiary' => false,
+            'ownership_type' => 'Registered Owner',
+            'proof_of_ownership_document' => 'Mobile GIS Boundary Walk',
+            'commodity' => $item['crop_planted'] ?? 'Rice',
+            'size_ha' => $areaHa,
+            'farm_type' => 'Irrigated',
+            'is_organic' => false,
+            'boundary_points' => json_encode($points),
+            'non_productive_area_sqm' => $nonProductiveSqm,
+            'has_discrepancy' => $hasDiscrepancy,
+            'parcel_name' => $item['parcel_name'] ?? null,
+            'planting_start_month' => $item['planting_start_month'] ?? null,
+            'planting_end_month' => $item['planting_end_month'] ?? null,
+            'remarks' => $item['observations'] ?? null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::update(
+            'UPDATE farm_plots SET coordinates = POINT(?, ?) WHERE id = ?',
+            [$centroid['lng'], $centroid['lat'], $id]
+        );
+
+        return FarmPlot::with('farmer')->findOrFail($id);
+    }
+
+    /**
+     * Fire the DA-RSBSA "Georeferencing Stub" SMS receipt once a farm boundary
+     * has been successfully mapped and saved. Wrapped in try/catch so a
+     * gateway failure never breaks the sync batch.
+     */
+    private function sendGeoreferencingReceipt(FarmPlot $farmPlot, GeoTag $geoTag): void
+    {
+        $farmer = $farmPlot->farmer ?? Farmer::find($farmPlot->farmer_id);
+        if (! $farmer || empty($farmer->mobile_number)) {
+            return;
+        }
+
+        try {
+            $name = trim($farmer->first_name.' '.$farmer->surname);
+            $areaHa = number_format((float) $farmPlot->size_ha, 4);
+            $coords = number_format((float) $farmPlot->latitude, 5).', '.number_format((float) $farmPlot->longitude, 5);
+            $discrepancyNote = $geoTag->has_discrepancy
+                ? ' A spatial discrepancy was flagged for MAO review.'
+                : '';
+
+            $message = "AGRI-AKAP Georeferencing Stub: Hi {$name}, your farm ({$areaHa} ha) at {$coords}, "
+                ."{$farmPlot->location_brgy} has been successfully mapped and verified under the RSBSA protocol."
+                .$discrepancyNote;
+
+            $this->sms->send($farmer->mobile_number, $message);
+
+            $farmPlot->forceFill(['georef_sms_sent_at' => now()])->save();
+            $geoTag->forceFill(['sms_sent_at' => now()])->save();
+        } catch (\Throwable $e) {
+            Log::warning('Georeferencing SMS receipt failed: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Parses geo-tag coordinates: a single {lat,lng} for markers, or an
+     * ordered vertex list [{lat,lng}, ...] for boundary polygons.
+     *
+     * @return array<int, array{lat: float, lng: float}>|null
+     */
+    private function parseGeoTagPoints(mixed $raw, string $geometryType): ?array
+    {
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $raw = $decoded;
+            }
+        }
+
+        if (! is_array($raw)) {
+            return null;
+        }
+
+        if ($geometryType === 'marker') {
+            if (isset($raw['lat'], $raw['lng'])) {
+                return [['lat' => (float) $raw['lat'], 'lng' => (float) $raw['lng']]];
+            }
+
+            return null;
+        }
+
+        $points = [];
+        foreach ($raw as $p) {
+            if (is_array($p) && isset($p['lat'], $p['lng'])) {
+                $points[] = ['lat' => (float) $p['lat'], 'lng' => (float) $p['lng']];
+            }
+        }
+
+        return $points ?: null;
+    }
+
+    /**
+     * Equirectangular-projection shoelace area (meters), mirroring the
+     * client-side estimate so the technician's preview matches the server's
+     * authoritative figure.
+     */
+    private function polygonAreaSqm(array $points): float
+    {
+        $count = count($points);
+        if ($count < 3) {
+            return 0.0;
+        }
+
+        $earthRadius = 6371000;
+        $meanLat = array_sum(array_column($points, 'lat')) / $count;
+        $latRad0 = deg2rad($meanLat);
+        $cosLat0 = cos($latRad0);
+
+        $xy = array_map(function (array $p) use ($earthRadius, $cosLat0) {
+            return [
+                'x' => deg2rad($p['lng']) * $earthRadius * $cosLat0,
+                'y' => deg2rad($p['lat']) * $earthRadius,
+            ];
+        }, $points);
+
+        $area = 0.0;
+        for ($i = 0; $i < $count; $i++) {
+            $j = ($i + 1) % $count;
+            $area += $xy[$i]['x'] * $xy[$j]['y'] - $xy[$j]['x'] * $xy[$i]['y'];
+        }
+
+        return abs($area) / 2;
+    }
+
+    /**
+     * @return array{lat: float, lng: float}
+     */
+    private function polygonCentroid(array $points): array
+    {
+        $count = count($points);
+
+        return [
+            'lat' => array_sum(array_column($points, 'lat')) / $count,
+            'lng' => array_sum(array_column($points, 'lng')) / $count,
+        ];
     }
 
     /**

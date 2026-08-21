@@ -258,21 +258,17 @@ class FarmerController extends Controller
     {
         $validatedData = $request->validated();
 
-        // Prevent duplicate intake: reject when an existing farmer already
-        // matches the same surname + first name + birthdate (case-insensitive).
+        // ── FFRS 2.0 Automated Deduplication Engine ────────────────────────────
+        // Query for existing farmers matching surname + first_name + birthdate.
+        // Instead of aborting, we flag `is_probable_duplicate = true` so Admin
+        // staff can review and merge these via the web dashboard later.
         $duplicate = Farmer::whereRaw('LOWER(surname) = ?', [Str::lower($validatedData['surname'])])
             ->whereRaw('LOWER(first_name) = ?', [Str::lower($validatedData['first_name'])])
             ->whereDate('birthdate', $validatedData['birthdate'])
-            ->first();
+            ->exists();
 
         if ($duplicate) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'A farmer with the same name and birthdate is already registered.',
-                'errors' => [
-                    'surname' => ['A matching RSBSA record already exists for this person.'],
-                ],
-            ], 422);
+            $validatedData['is_probable_duplicate'] = true;
         }
 
         DB::beginTransaction();
@@ -370,5 +366,56 @@ class FarmerController extends Controller
         } while ($exists);
 
         return $candidate;
+    }
+
+    /**
+     * DA MAO Operational UI/UX: Update farmer verification status to RTS
+     * (Return for Correction) and notify the farmer via SMS with the exact
+     * document issue that needs to be addressed.
+     */
+    public function returnForCorrection(Request $request, string $farmerId)
+    {
+        $validated = $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
+        $farmer = Farmer::findOrFail($farmerId);
+
+        $farmer->update([
+            'verification_status' => 'rts',
+            'rts_reason' => $validated['reason'],
+        ]);
+
+        // Fire SMS notification to farmer about the document issue.
+        $this->sendRtsNotification($farmer, $validated['reason']);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Farmer marked for correction. SMS notification sent.',
+            'data' => $farmer,
+        ]);
+    }
+
+    /**
+     * Send RTS (Return for Correction) SMS notification to the farmer,
+     * informing them of the exact document issue.
+     */
+    protected function sendRtsNotification(Farmer $farmer, string $reason): void
+    {
+        if (empty($farmer->mobile_number)) {
+            return;
+        }
+
+        try {
+            $name = trim($farmer->first_name . ' ' . $farmer->surname);
+            $reference = $farmer->rsbsa_no ?: $farmer->transaction_code;
+
+            $message = "AGRI-AKAP MAO: Hi {$name} ({$reference}), your document was returned for correction. "
+                . "Issue: {$reason}. Please re-submit corrected documents at the MAO office.";
+
+            $this->sms->send($farmer->mobile_number, $message);
+        } catch (\Throwable $e) {
+            Log::warning('RTS SMS notification failed: ' . $e->getMessage());
+        }
     }
 }

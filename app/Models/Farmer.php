@@ -14,6 +14,8 @@ class Farmer extends Model
 
     protected $fillable = [
         'rsbsa_no', 'transaction_code', 'photo_path', 'qr_code_hash',
+        'is_probable_duplicate',
+        'verification_status', 'rts_reason', 'verified_at',
         'surname', 'first_name', 'middle_name', 'ext_name',
         'no_middle_name', 'no_ext_name', 'sex',
 
@@ -53,8 +55,12 @@ class Farmer extends Model
         'is_icc_ip' => 'boolean',
         'is_pwd' => 'boolean',
         'is_4ps_beneficiary' => 'boolean',
+        'is_probable_duplicate' => 'boolean',
         'birthdate' => 'date',
+        'verified_at' => 'datetime',
     ];
+
+    protected $appends = ['is_rffa_eligible'];
 
     /**
      * Get all subsidy claims for this farmer.
@@ -91,5 +97,45 @@ class Farmer extends Model
               ->orWhere('permanent_brgy', 'like', $term) // Helpful for geographic filtering
               ->orWhere('permanent_city', 'like', $term);
         });
+    }
+
+    /**
+     * FFRS 2.0 RFFA Eligibility — computed accessor.
+     *
+     * A farmer is eligible for the Rice Farmers Financial Assistance (RFFA)
+     * program when ALL of the following criteria are met:
+     *   1. They have at least one active farm plot where commodity = 'Rice'
+     *   2. The sum of ALL their farm plot areas is ≤ 2.0 hectares
+     *
+     * @return bool
+     */
+    public function getIsRffaEligibleAttribute(): bool
+    {
+        // Eager-load farm plots if not already loaded to avoid N+1.
+        if (! $this->relationLoaded('farmPlots')) {
+            $this->load('farmPlots');
+        }
+
+        $plots = $this->farmPlots;
+
+        // No plots → not eligible.
+        if ($plots->isEmpty()) {
+            return false;
+        }
+
+        // Check criterion 1: at least one Rice plot.
+        $hasRice = $plots->contains(function ($plot) {
+            return ! $plot->deleted_at &&
+                   strcasecmp(trim((string) $plot->commodity), 'Rice') === 0;
+        });
+
+        if (! $hasRice) {
+            return false;
+        }
+
+        // Check criterion 2: total area ≤ 2.0 ha (across ALL plots, not just Rice).
+        $totalHa = $plots->where('deleted_at', null)->sum('size_ha');
+
+        return $totalHa > 0 && $totalHa <= 2.0;
     }
 }
