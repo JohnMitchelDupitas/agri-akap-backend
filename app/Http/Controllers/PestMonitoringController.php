@@ -188,4 +188,55 @@ class PestMonitoringController extends Controller
             'data' => $row->load('farmer', 'farmPlot'),
         ], 201);
     }
+
+    public function fieldValidate(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+            'photo_base64' => 'required|string',
+            'pest_name' => 'nullable|string|max:255',
+            'incidence' => 'nullable|numeric|min:0|max:100',
+            'severity' => 'nullable|string|max:32',
+            'advisory' => 'nullable|string|max:2000',
+            'item_distributed' => 'nullable|string|max:255',
+            'quantity' => 'nullable|string|max:64',
+            'is_outbreak' => 'nullable|boolean',
+        ]);
+
+        $row = PestMonitoring::findOrFail($id);
+        $path = $this->storeBase64Image($validated['photo_base64'], 'pest-monitoring');
+        if ($path === null) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'The photo evidence could not be decoded. Please recapture.',
+            ], 422);
+        }
+
+        $incidence = array_key_exists('incidence', $validated)
+            ? (int) round((float) $validated['incidence'])
+            : $row->incidence;
+
+        $row->update([
+            'latitude' => $validated['latitude'],
+            'longitude' => $validated['longitude'],
+            'photo_path' => $path,
+            'technician_id' => $request->user()->id,
+            'pest_name' => $validated['pest_name'] ?? $row->pest_name,
+            'incidence' => $incidence,
+            'severity' => $validated['severity'] ?? $row->severity,
+            'advisory' => $validated['advisory'] ?? $row->advisory,
+            'item_distributed' => $validated['item_distributed'] ?? $row->item_distributed,
+            'quantity' => $validated['quantity'] ?? $row->quantity,
+            'is_outbreak' => array_key_exists('is_outbreak', $validated)
+                ? (bool) $validated['is_outbreak']
+                : $row->is_outbreak,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Field validation saved.',
+            'data' => $row->fresh()->load('farmer', 'farmPlot'),
+        ]);
+    }
 }

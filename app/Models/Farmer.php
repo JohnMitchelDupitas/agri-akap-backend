@@ -46,6 +46,7 @@ class Farmer extends Model
         'is_icc_ip', 'icc_ip_name', 'is_pwd', 'is_4ps_beneficiary',
         'association_1', 'association_2', 'association_3', 'livelihood_type',
         'livelihood_detail',
+        'total_farm_area_ha',
     ];
 
     protected $casts = [
@@ -58,6 +59,7 @@ class Farmer extends Model
         'is_probable_duplicate' => 'boolean',
         'birthdate' => 'date',
         'verified_at' => 'datetime',
+        'total_farm_area_ha' => 'decimal:4',
     ];
 
     protected $appends = ['is_rffa_eligible'];

@@ -158,6 +158,7 @@ class ReportsController extends Controller
                     DB::raw("TRIM(CONCAT(COALESCE(farmers.first_name,''), ' ', COALESCE(farmers.surname,''))) AS name"),
                     DB::raw("COALESCE(harvest_logs.farm_location, farm_plots.location_brgy, farmers.permanent_brgy, '') AS farm_location"),
                     DB::raw("COALESCE(harvest_logs.crop_type, farm_plots.commodity, '') AS crop"),
+                    DB::raw("COALESCE(harvest_logs.variety, '') AS variety"),
                     DB::raw('COALESCE(harvest_logs.area_harvested, 0) AS area_harvested'),
                     DB::raw('COALESCE(harvest_logs.total_yield, 0) AS total_yield'),
                     'harvest_logs.date_harvested',
@@ -185,6 +186,7 @@ class ReportsController extends Controller
                 'name'           => $row->name,
                 'farm_location'  => $row->farm_location,
                 'crop'           => $row->crop,
+                'variety'        => $row->variety,
                 'area_harvested' => (float) $row->area_harvested,
                 'total_yield'    => (float) $row->total_yield,
                 'date_harvested' => $row->date_harvested,
@@ -267,9 +269,9 @@ class ReportsController extends Controller
                 ?: optional($row->created_at)->format('Y-m-d');
 
             $status = 'Pending';
-            if ($row->item_distributed || $row->is_outbreak) {
+            if ($row->item_distributed) {
                 $status = 'Responded';
-            } elseif ($row->report_ref) {
+            } elseif ($row->latitude && $row->photo_path) {
                 $status = 'Validated';
             }
 

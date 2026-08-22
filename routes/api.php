@@ -53,6 +53,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/farm-plots', [FarmPlotController::class, 'store'])
         ->middleware('role:technician,admin');
     Route::get('/farm-plots/{id}', [FarmPlotController::class, 'show']);
+    Route::delete('/farm-plots/{id}', [FarmPlotController::class, 'destroy'])
+        ->middleware('role:admin');
 
     // Subsidy Programs
     Route::get('/programs', [ProgramController::class, 'index']);
@@ -194,6 +196,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/pest-monitoring/{id}', [PestMonitoringController::class, 'show']);
     Route::post('/pest-monitoring', [PestMonitoringController::class, 'store'])
         ->middleware('role:barangay_official,technician,admin');
+    Route::patch('/pest-monitoring/{id}/field-validate', [PestMonitoringController::class, 'fieldValidate'])
+        ->middleware('role:technician,admin');
 
     // MAO Executive Reporting Suite (live encoded data)
     Route::get('/executive-reports', [ExecutiveReportingController::class, 'index'])

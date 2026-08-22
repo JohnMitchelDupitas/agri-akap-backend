@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\FarmPlot;
+use App\Models\Farmer;
+use App\Services\FarmAreaBudgetService;
 use App\Services\PolygonIntegrityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,6 +18,7 @@ class FarmPlotController extends Controller
 
     public function __construct(
         private readonly PolygonIntegrityService $polygonIntegrity,
+        private readonly FarmAreaBudgetService $farmAreaBudget,
     ) {}
 
 
@@ -141,10 +144,16 @@ class FarmPlotController extends Controller
             : $validated['ownership_type'];
 
         $landownerName = $validated['landowner_name'] ?? null;
+        $size = (float) $validated['size_ha'];
 
-        $plot = DB::transaction(function () use ($validated, $lat, $lng, $ownership, $landownerName, $points) {
+        $farmer = Farmer::findOrFail($validated['farmer_id']);
+        $budgetError = $this->farmAreaBudget->assertWithinBudget($farmer, $size);
+        if ($budgetError) {
+            return $budgetError;
+        }
+
+        $plot = DB::transaction(function () use ($validated, $lat, $lng, $ownership, $landownerName, $points, $size) {
             $id   = (string) Str::uuid();
-            $size = (float) $validated['size_ha'];
 
             DB::table('farm_plots')->insert([
                 'id'                          => $id,
@@ -184,6 +193,21 @@ class FarmPlotController extends Controller
             'message' => 'Farm plot geotagged successfully.',
             'data'    => $plot,
         ], 201);
+    }
+
+    /**
+     * Soft-delete a farm plot (admin cleanup of legacy duplicate inserts).
+     */
+    public function destroy(string $id): JsonResponse
+    {
+        $plot = FarmPlot::findOrFail($id);
+        $plot->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Farm plot removed.',
+            'data' => ['id' => $id],
+        ]);
     }
 
     /**

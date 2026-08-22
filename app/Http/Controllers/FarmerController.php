@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Imports\FarmersImport;
 use App\Models\Farmer;
 use App\Http\Requests\StoreFarmerRequest;
+use App\Services\FarmAreaBudgetService;
 use App\Services\SmsService;
 use App\Traits\DecodesBase64Image;
 use Illuminate\Http\JsonResponse;
@@ -18,8 +19,10 @@ class FarmerController extends Controller
 {
     use DecodesBase64Image;
 
-    public function __construct(private SmsService $sms)
-    {
+    public function __construct(
+        private SmsService $sms,
+        private FarmAreaBudgetService $farmAreaBudget,
+    ) {
     }
 
     /**
@@ -37,7 +40,8 @@ class FarmerController extends Controller
         $barangay = $request->query('barangay');
         $commodity = trim((string) $request->query('commodity', ''));
 
-        $query = Farmer::withCount('farmPlots');
+        $query = Farmer::withCount('farmPlots')
+            ->withSum('farmPlots as mapped_area_ha', 'size_ha');
 
         if (in_array($role, ['barangay_official', 'barangay'], true)) {
             $assigned = $user->assigned_barangay;
@@ -97,6 +101,18 @@ class FarmerController extends Controller
         $perPage = min(50, max(5, (int) $request->query('per_page', 15)));
         $farmers = $query->orderBy('surname', 'asc')->paginate($perPage);
 
+        $farmers->getCollection()->transform(function (Farmer $farmer) {
+            $mapped = (float) ($farmer->mapped_area_ha ?? 0);
+            $farmer->setAttribute('mapped_area_ha', $mapped);
+            $farmer->setAttribute('area_mismatch', $this->farmAreaBudget->isMismatch($farmer, $mapped));
+            $farmer->setAttribute(
+                'remaining_ha',
+                max(0.0, (float) ($farmer->total_farm_area_ha ?? 0) - $mapped)
+            );
+
+            return $farmer;
+        });
+
         return response()->json([
             'status' => 'success',
             'message' => 'Farmers registry retrieved.',
@@ -147,6 +163,11 @@ class FarmerController extends Controller
             'farmPlots',
             'distributions.program:id,name,unit_of_measurement,type',
         ])->findOrFail($id);
+
+        $budget = $this->farmAreaBudget->summary($farmer);
+        $farmer->setAttribute('mapped_area_ha', $budget['mapped_area_ha']);
+        $farmer->setAttribute('remaining_ha', $budget['remaining_ha']);
+        $farmer->setAttribute('area_mismatch', $budget['area_mismatch']);
 
         return response()->json([
             'status' => 'success',
@@ -292,6 +313,8 @@ class FarmerController extends Controller
 
             $plots = $validatedData['plots'] ?? [];
             unset($validatedData['plots']);
+
+            $validatedData['total_farm_area_ha'] = $this->farmAreaBudget->quotaFromRegistrationPlots($plots);
 
             $farmer = Farmer::create($validatedData);
 

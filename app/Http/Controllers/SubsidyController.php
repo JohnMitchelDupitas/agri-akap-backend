@@ -436,6 +436,9 @@ class SubsidyController extends Controller
         }
 
         $primaryPlot = $farmer->farmPlots()->first();
+        $totalFarmSize = (float) $farmer->farmPlots()->sum('size_ha');
+        $cap = (float) ($program->max_hectares_limit ?? $totalFarmSize);
+        $eligibleSize = $cap > 0 ? min($totalFarmSize, $cap) : $totalFarmSize;
 
         return response()->json([
             'status' => 'success',
@@ -449,8 +452,8 @@ class SubsidyController extends Controller
                 'mobile_number' => $farmer->mobile_number,
                 'item_released' => $program->program_name,
                 'unit' => $program->unit_of_measurement,
-                'total_farm_size' => (float) $farmer->farmPlots()->sum('size_ha'),
-                'eligible_size' => null,
+                'total_farm_size' => $totalFarmSize,
+                'eligible_size' => $eligibleSize,
                 'quantity' => (int) $beneficiary->calculated_allocation,
                 'inventory_remaining' => (int) $program->remaining_quantity,
                 'plot_lat' => $primaryPlot?->latitude,

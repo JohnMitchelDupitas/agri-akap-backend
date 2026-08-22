@@ -174,6 +174,15 @@ class DamageAssessmentController extends Controller
             return $barangayResult;
         }
 
+        $areaError = $this->assertDestroyedAreaWithinPlot(
+            $validated['farm_plot_id'],
+            isset($validated['area_destroyed_ha']) ? (float) $validated['area_destroyed_ha'] : null,
+            isset($validated['area_planted_ha']) ? (float) $validated['area_planted_ha'] : null,
+        );
+        if ($areaError) {
+            return $areaError;
+        }
+
         $path = null;
         if (!empty($validated['photo_base64'])) {
             $path = $this->storeBase64Image($validated['photo_base64'], 'assessments');
@@ -267,9 +276,21 @@ class DamageAssessmentController extends Controller
             'damage_percentage' => 'nullable|numeric|min:0|max:100',
             'crop_stage' => ['nullable', Rule::in(['Seedling', 'Vegetative', 'Reproductive', 'Maturity', 'Harvested'])],
             'remarks' => 'nullable|string|max:1000',
+            'estimated_value_lost' => 'nullable|numeric|min:0',
         ]);
 
         $assessment = DamageAssessment::findOrFail($id);
+        $areaError = $this->assertDestroyedAreaWithinPlot(
+            $assessment->farm_plot_id,
+            array_key_exists('area_destroyed_ha', $validated)
+                ? (float) $validated['area_destroyed_ha']
+                : (float) $assessment->area_destroyed_ha,
+            (float) ($assessment->area_planted_ha ?? 0),
+        );
+        if ($areaError) {
+            return $areaError;
+        }
+
         $path = $this->storeBase64Image($validated['photo_base64'], 'assessments');
         if ($path === null) {
             return response()->json([
@@ -287,6 +308,7 @@ class DamageAssessmentController extends Controller
             'damage_percentage' => $validated['damage_percentage'] ?? $assessment->damage_percentage,
             'crop_stage' => $validated['crop_stage'] ?? $assessment->crop_stage,
             'remarks' => $validated['remarks'] ?? $assessment->remarks,
+            'estimated_value_lost' => $validated['estimated_value_lost'] ?? $assessment->estimated_value_lost,
             'status' => 'Verified',
             'verified_by' => $request->user()->id,
             'verified_at' => now(),
@@ -330,5 +352,37 @@ class DamageAssessmentController extends Controller
             'message' => "Assessment marked as {$validated['decision']}.",
             'data' => $assessment->fresh(),
         ], 200);
+    }
+
+    private function assertDestroyedAreaWithinPlot(
+        string $farmPlotId,
+        ?float $areaDestroyed,
+        ?float $areaPlanted,
+    ): ?JsonResponse {
+        if ($areaDestroyed === null) {
+            return null;
+        }
+
+        $plot = FarmPlot::find($farmPlotId);
+        if (! $plot) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Selected farm plot was not found.',
+            ], 422);
+        }
+
+        $cap = (float) $plot->size_ha;
+        if ($areaPlanted !== null && $areaPlanted > 0) {
+            $cap = min($cap, $areaPlanted);
+        }
+
+        if ($areaDestroyed > $cap + 0.0001) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Area damaged cannot exceed the farmer farm size ('.$cap.' ha).',
+            ], 422);
+        }
+
+        return null;
     }
 }

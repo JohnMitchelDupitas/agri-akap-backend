@@ -8,6 +8,7 @@ use App\Models\HarvestLog;
 use App\Traits\ResolvesEncodingBarangay;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class HarvestLogController extends Controller
 {
@@ -58,7 +59,7 @@ class HarvestLogController extends Controller
             'variety' => ['required', 'string', 'max:128'],
             'area_harvested' => ['required', 'numeric', 'min:0'],
             'total_yield' => ['required', 'numeric', 'min:0'],
-            'yield_unit' => ['nullable', 'string', 'max:64'],
+            'yield_unit' => ['nullable', Rule::in(['Metric Tons'])],
             'date_harvested' => ['required', 'date'],
             'farm_location' => ['nullable', 'string', 'max:255'],
             'barangay_name' => ['nullable', 'string', 'max:255'],
@@ -105,7 +106,7 @@ class HarvestLogController extends Controller
             'variety' => $validated['variety'],
             'area_harvested' => $validated['area_harvested'],
             'total_yield' => $validated['total_yield'],
-            'yield_unit' => $validated['yield_unit'] ?? 'Metric Tons',
+            'yield_unit' => 'Metric Tons',
             'date_harvested' => $validated['date_harvested'],
             'farm_location' => $validated['farm_location'] ?? $encodingBarangay ?? $farmer->permanent_brgy,
         ]);
